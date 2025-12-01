@@ -24,6 +24,9 @@
 **/compose*
 **/Dockerfile*
 **/npm-debug.log
+**/pnpm-debug.log
+node_modules
+dist
 **/obj
 **/secrets.dev.yaml
 **/values.dev.yaml
