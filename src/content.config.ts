@@ -150,7 +150,13 @@ const cv = defineCollection({
                 end: z.string().optional()
               })
             ]),
-            responsibilities: z.array(z.string()),
+            description: z.string().optional(),
+            responsibilities: z.array(
+              z.union([
+                z.string(),
+                z.record(z.string(), z.array(z.string()))
+              ])
+            ),
             achievements: z.array(z.string()).optional(),
           })
         ),

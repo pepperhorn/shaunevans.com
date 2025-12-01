@@ -3,9 +3,10 @@ interface Props {
   title: string;
   company?: string;
   dateRange: string | { start: string; end?: string };
+  description?: string;
 }
 
-const { title, company, dateRange } = Astro.props;
+const { title, company, dateRange, description } = Astro.props;
 
 // Duration analysis for both scaling and color coding
 const analyzeDuration = (dateRange: string | { start: string; end?: string }) => {
@@ -97,6 +98,11 @@ const { scale: durationScale, colorCategory, durationYears, displayDateRange } =
   <p class="text-slate-600 dark:text-slate-400 italic mb-3">
     <span class="date-range">{displayDateRange}</span>
   </p>
+  {description && (
+    <p class="text-slate-700 dark:text-slate-300 mb-3 text-sm">
+      {description}
+    </p>
+  )}
   <div class="job-content ml-1">
     <slot />
   </div>
