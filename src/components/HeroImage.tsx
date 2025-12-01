@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 
 interface HeroImageProps {
   title: string
@@ -46,6 +46,7 @@ export default function HeroImage({
     observer.observe(heroElement)
 
     function updateParallax() {
+      if (!parallaxElement) return
       const scrollPosition = window.pageYOffset
       const parallaxFactor = 0.3
       parallaxElement.style.transform = `translate3d(0, ${scrollPosition * parallaxFactor}px, 0)`

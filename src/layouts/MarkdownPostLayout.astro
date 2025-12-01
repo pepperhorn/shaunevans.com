@@ -6,6 +6,7 @@ import Prose from "../components/Prose.astro";
 import { getImage } from "astro:assets";
 import HeroImage from "../components/HeroImage.tsx";
 import NextPost from "../components/NextPost.astro";
+import { resolveImage } from "../utils/imageMap";
 
 const { frontmatter, currentId, collection } = Astro.props;
 const updatedDate = frontmatter?.updatedDate
@@ -22,15 +23,22 @@ const title = frontmatter?.title;
 const description = frontmatter?.description;
 const authorFullName = frontmatter?.author;
 const author = authorFullName.split(" ")[0].toLowerCase();
-const image = frontmatter.image?.src;
+const imageSrc = frontmatter.image?.src;
+let resolvedImage: ReturnType<typeof resolveImage> | null = null;
+try {
+  resolvedImage = imageSrc ? resolveImage(imageSrc) : null;
+} catch (error: any) {
+  console.warn(`Image error for ${currentId}:`, error?.message || String(error));
+  resolvedImage = null;
+}
 const alt = frontmatter.image?.alt;
 const positionx = frontmatter?.image?.positionx;
 const positiony = frontmatter?.image?.positiony;
 let baseUrl = new URL(Astro.request.url).origin;
 
-const backgroundImage = image
+const backgroundImage = resolvedImage
   ? await getImage({
-      src: image,
+      src: resolvedImage,
       alt: alt,
       width: 3840,
       height: 2160,
@@ -41,9 +49,9 @@ const backgroundImage = image
     })
   : null;
 
-const mobileBackgroundImage = image
+const mobileBackgroundImage = resolvedImage
   ? await getImage({
-      src: image,
+      src: resolvedImage,
       alt: alt,
       width: 1920,
       height: 1080,
@@ -55,9 +63,9 @@ const mobileBackgroundImage = image
     })
   : null;
 
-const metaImage = image
+const metaImage = resolvedImage
   ? await getImage({
-      src: image,
+      src: resolvedImage,
       alt: alt,
       width: 1280,
       height: 720,
@@ -70,7 +78,7 @@ const metaImage = image
 
 <BaseLayout
   title={title}
-  image={image ? `${baseUrl}${metaImage?.src}` : ""}
+  image={resolvedImage ? `${baseUrl}${metaImage?.src}` : ""}
   alt={alt ? metaImage?.attributes.alt : ""}
   description={description}
   author={author}
@@ -79,7 +87,7 @@ const metaImage = image
   is404Page={false}
 >
   {
-    image ? (
+    resolvedImage && backgroundImage && mobileBackgroundImage ? (
       <HeroImage
         client:load
         title={title}

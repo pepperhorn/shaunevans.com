@@ -7,9 +7,10 @@ import { getImage } from "astro:assets";
 import { Font } from "astro:assets";
 import "../styles/global.css";
 let baseUrl = new URL(Astro.request.url).origin;
+import shaun1 from "../assets/images/shaun1.jpg";
 const metaImage = await getImage({
-  src: "https://cdn.erfianugrah.com/Tenhult_3.JPG",
-  alt: "Cover image for stoicopa website",
+  src: shaun1,
+  alt: "Saxophonist Shaun Evans",
   height: 720,
   width: 1280,
   decoding: "async",
@@ -17,18 +18,8 @@ const metaImage = await getImage({
   loading: "lazy",
 });
 
-const favicon_webp = await getImage({
-  src: "https://cdn.erfianugrah.com/ea_favicon.png",
-  alt: "stoicopa favicon",
-  height: 400,
-  width: 400,
-  decoding: "async",
-  loading: "lazy",
-  format: "png",
-});
-
-const pageTitle = "stoicopa";
-const metaDescription = "My personal hamster wheel.";
+const pageTitle = "ShaunEvans.com";
+const metaDescription = "Canadian-Australian Saxophonist, Arranger & Musical Director Shaun Evans";
 const {
   image,
   description,
@@ -46,21 +37,20 @@ const {
 const personSchema = {
   "@context": "https://schema.org",
   "@type": "Person",
-  name: "Erfi Anugrah",
+  name: "Shaun Evans",
   url: baseUrl,
-  image: `${baseUrl}${favicon_webp.src}`,
+  image: `${baseUrl}/logos/pathcircleinv.svg`,
   sameAs: [
-    "https://mastodon.social/@stoicopa",
-    "https://github.com/erfianugrah",
-    "https://linkedin.com/in/erfianugrah",
-    "https://instagram.com/stoicopa",
+    "https://github.com/pepperhornh",
+    "https://www.linkedin.com/in/pepperhorn/",
+    "https://www.instagram.com/hotbutteredsax/",
   ],
 };
 
 const websiteSchema = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  name: site_name || "stoicopa",
+  name: site_name || "ShaunEvans.com",
   url: baseUrl,
   description: description || metaDescription,
   potentialAction: {
@@ -88,12 +78,15 @@ const formattedPubDate = pubDate ? new Date(pubDate).toISOString() : null;
 const formattedUpdatedDate = updatedDate
   ? new Date(updatedDate).toISOString()
   : null;
+
+// Check if this is the home page
+const isHomePage = Astro.url.pathname === '/' || Astro.url.pathname === '/index.html';
 ---
 
 <html class="bg-[rgb(244,242,238)] dark:bg-[rgb(34,33,37)]" lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" type="image/webp" href={favicon_webp.src} />
+    <link rel="icon" type="image/svg+xml" href="/logos/pathcircleinv.svg" />
     <link rel="sitemap" href="/sitemap-index.xml" />
     <link rel="canonical" href={new URL(Astro.url.pathname, baseUrl).href} />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -106,21 +99,21 @@ const formattedUpdatedDate = updatedDate
     <!-- Basic SEO -->
     <title>{title || pageTitle}</title>
     <meta name="description" content={description || metaDescription} />
-    <meta name="author" content={author || "Erfi Anugrah"} />
+    <meta name="author" content={author || "Shaun Evans"} />
 
     <!-- OpenGraph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content={Astro.url} />
     <meta property="og:title" content={title || pageTitle} />
     <meta property="og:description" content={description || metaDescription} />
-    <meta property="og:site_name" content={site_name || "stoicopa"} />
+    <meta property="og:site_name" content={site_name || "ShaunEvans.com"} />
     <meta
       property="og:image"
       content={image || `${baseUrl}${metaImage?.src}`}
     />
     <meta
       property="og:image:alt"
-      content={alt || "Cover image for stoicopa website"}
+      content={alt || "Cover image for ShaunEvans.com"}
     />
     <meta property="og:image:width" content="1280" />
     <meta property="og:image:height" content="720" />
@@ -136,7 +129,7 @@ const formattedUpdatedDate = updatedDate
     />
     <meta
       name="twitter:image:alt"
-      content={alt || "Cover image for stoicopa website"}
+      content={alt || "Cover image for ShaunEvans.com"}
     />
 
     <!-- Article-specific metadata -->
@@ -150,7 +143,7 @@ const formattedUpdatedDate = updatedDate
         <meta property="article:modified_time" content={formattedUpdatedDate} />
       )
     }
-    <meta property="article:author" content={author || "Erfi Anugrah"} />
+    <meta property="article:author" content={author || "Shaun Evans"} />
 
     <!-- Structured Data -->
     <script
@@ -169,7 +162,7 @@ const formattedUpdatedDate = updatedDate
     <ClientRouter />
   </head>
   <body
-    class="flex flex-col flex-wrap justify-between md:pt-8 md:pr-16 md:pb-8 md:pl-16 p-8 max-w-full min-h-screen dark:bg-[rgb(34,33,37)] dark:text-[rgb(245,245,245)]"
+    class="flex flex-col flex-wrap md:pt-8 md:pr-16 md:pl-16 p-8 max-w-full min-h-screen dark:bg-[rgb(34,33,37)] dark:text-[rgb(245,245,245)] relative z-0 pb-24 md:pb-32"
   >
     {!hideHeaderFooter && <Header is404Page={is404Page} />}
     <slot />

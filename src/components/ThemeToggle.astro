@@ -1,8 +1,8 @@
 ---
-import ThemeToggle from "./ThemeToggle";
+import ThemeToggleComponent from "./ThemeToggle.tsx";
 ---
 
-<ThemeToggle client:load />
+<ThemeToggleComponent client:load />
 
 <style is:global>
   /* Keep only the parts needed for the theme toggle functionality */
@@ -38,12 +38,14 @@ import ThemeToggle from "./ThemeToggle";
 
 <script>
   function getThemePreference(): "light" | "dark" {
-    return (
-      (localStorage.getItem("theme") as "light" | "dark") ||
-      (window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light")
-    );
+    // Check if user has a saved preference
+    const savedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
+    if (savedTheme) {
+      return savedTheme;
+    }
+    
+    // Default to light theme for all pages
+    return "light";
   }
 
   function applyTheme(theme: "light" | "dark") {
@@ -65,6 +67,17 @@ import ThemeToggle from "./ThemeToggle";
 
   // Apply theme on Astro navigation events
   document.addEventListener("astro:after-swap", () => {
-    applyTheme(getThemePreference());
+    // Only apply default if user hasn't set a preference
+    if (!localStorage.getItem("theme")) {
+      applyTheme(getThemePreference());
+    }
+  });
+  
+  // Apply theme on initial page load
+  document.addEventListener("astro:page-load", () => {
+    // Only apply default if user hasn't set a preference
+    if (!localStorage.getItem("theme")) {
+      applyTheme(getThemePreference());
+    }
   });
 </script>

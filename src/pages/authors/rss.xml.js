@@ -8,8 +8,8 @@ export async function GET(context) {
   const authors = await getCollection("authors");
   return rss({
     stylesheet: "/rss/rss.xsl",
-    title: "stoicopa",
-    description: "My personal hamster wheel.",
+    title: "ShaunEvans.com",
+    description: "Canadian-Australian Saxophonist, Arranger & Musical Director Shaun Evans",
     site: context.site,
     items: authors.map((post) => ({
       title: post.data.title,

@@ -1,0 +1,100 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Prose from "../components/Prose.astro";
+import { Icon } from "astro-icon/components";
+
+const pageTitle = "Contact | ShaunEvans.com";
+const description = "Contact Shaun Evans - Canadian-Australian Saxophonist, Arranger & Musical Director";
+const site_name = "ShaunEvans.com";
+---
+
+<BaseLayout
+  title={pageTitle}
+  description={description}
+  site_name={site_name}
+  is404Page={false}
+  hideHeaderFooter={false}
+>
+  <Prose>
+    <div class="space-y-8 py-8">
+      <header class="text-center space-y-4">
+        <h1 class="font-overpass-mono text-4xl text-gray-900 dark:text-[rgb(245,245,245)]">
+          Contact
+        </h1>
+        <p class="font-overpass-mono text-lg text-gray-700 dark:text-gray-300">
+          Get in touch with Shaun Evans
+        </p>
+      </header>
+
+      <div class="space-y-6 max-w-2xl mx-auto">
+        <section class="bg-gray-100 dark:bg-[rgb(40,39,43)] rounded-lg p-6 shadow-sm">
+          <h2 class="font-overpass-mono text-2xl text-gray-900 dark:text-[rgb(245,245,245)] mb-4">
+            Contact Information
+          </h2>
+          <div class="space-y-4">
+            <div class="flex items-center gap-3">
+              <Icon name="mdi:email" class="h-6 w-6 text-gray-700 dark:text-gray-300" />
+              <a 
+                href="mailto:shaun@shaunevans.com" 
+                class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition font-medium"
+              >
+                shaun@shaunevans.com
+              </a>
+            </div>
+            <div class="flex items-center gap-3">
+              <Icon name="mdi:linkedin" class="h-6 w-6 text-gray-700 dark:text-gray-300" />
+              <a 
+                href="https://linkedin.com/in/pepperhorn" 
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition font-medium"
+              >
+                LinkedIn Profile
+              </a>
+            </div>
+            <div class="flex items-center gap-3">
+              <Icon name="mdi:github" class="h-6 w-6 text-gray-700 dark:text-gray-300" />
+              <a 
+                href="https://github.com/pepperhornh" 
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition font-medium"
+              >
+                GitHub Profile
+              </a>
+            </div>
+            <div class="flex items-center gap-3">
+              <Icon name="mdi:instagram" class="h-6 w-6 text-gray-700 dark:text-gray-300" />
+              <a 
+                href="https://www.instagram.com/hotbutteredsax/" 
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition font-medium"
+              >
+                Instagram
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2 class="font-overpass-mono text-2xl text-gray-900 dark:text-[rgb(245,245,245)] mb-4">
+            Booking & Inquiries
+          </h2>
+          <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+            For booking inquiries, musical direction services, arranging, or collaboration opportunities, 
+            please reach out via email. Shaun is available for:
+          </p>
+          <ul class="list-disc list-inside space-y-2 text-gray-700 dark:text-gray-300 mt-4 ml-4">
+            <li>Stage production development and consulting</li>
+            <li>Limited arranging and orchestration collaborations</li>
+            <li>Music production and recording (Saxophone, track production, virtual background vocals)</li>
+            <li>Clinics, online courses and educational workshops</li>
+            <li>Book <em>The Beat</em> or <em>The SoSaxy Band</em></li>
+          </ul>
+        </section>
+      </div>
+    </div>
+  </Prose>
+</BaseLayout>
+

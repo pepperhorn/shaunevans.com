@@ -3,22 +3,27 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import GetRandomImage from "../components/getRandomImage.astro";
 import { getCollection } from "astro:content";
 import { getImage } from "astro:assets";
+import { resolveImage } from "../utils/imageMap";
 
 const { directory, title } = Astro.props;
 const allContent = await getCollection(directory);
 const tags = [...new Set(allContent.map((post) => post.data.tags).flat())];
 
-const imagesByTag = {};
+const imagesByTag: Record<string, { large: string[]; medium: string[]; small: string[]; alt: string[] }> = {};
 for (const post of allContent) {
-  for (const tag of post.data.tags) {
+  const postData = post.data as { tags: string[]; image?: { src: string; alt: string } };
+  const postId = post.id;
+  for (const tag of postData.tags) {
     if (!imagesByTag[tag]) {
       imagesByTag[tag] = { large: [], medium: [], small: [], alt: [] };
     }
-    if (post.data.image?.src) {
-      const [largeImage, mediumImage, smallImage] = await Promise.all([
+    if (postData.image?.src) {
+      try {
+        const resolvedSrc = resolveImage(postData.image.src);
+        const [largeImage, mediumImage, smallImage] = await Promise.all([
         getImage({
-          src: post.data.image.src,
-          alt: post.data.image.alt,
+          src: resolvedSrc,
+          alt: postData.image.alt,
           width: 1920,
           height: 1080,
           decoding: "async",
@@ -26,8 +31,8 @@ for (const post of allContent) {
           quality: 65,
         }),
         getImage({
-          src: post.data.image.src,
-          alt: post.data.image.alt,
+          src: resolvedSrc,
+          alt: postData.image.alt,
           width: 1280,
           height: 720,
           decoding: "async",
@@ -35,8 +40,8 @@ for (const post of allContent) {
           quality: 65,
         }),
         getImage({
-          src: post.data.image.src,
-          alt: post.data.image.alt,
+          src: resolvedSrc,
+          alt: postData.image.alt,
           width: 854,
           height: 480,
           decoding: "async",
@@ -44,10 +49,13 @@ for (const post of allContent) {
           quality: 65,
         }),
       ]);
-      imagesByTag[tag].large.push(largeImage ? largeImage.src : null);
-      imagesByTag[tag].medium.push(mediumImage ? mediumImage.src : null);
-      imagesByTag[tag].small.push(smallImage ? smallImage.src : null);
-      imagesByTag[tag].alt.push(post.data.image.alt);
+        if (largeImage) imagesByTag[tag].large.push(largeImage.src);
+        if (mediumImage) imagesByTag[tag].medium.push(mediumImage.src);
+        if (smallImage) imagesByTag[tag].small.push(smallImage.src);
+        imagesByTag[tag].alt.push(postData.image.alt);
+      } catch (error: any) {
+        console.warn(`Skipping image for post ${postId} in tag ${tag}:`, error?.message || String(error));
+      }
     }
   }
 }

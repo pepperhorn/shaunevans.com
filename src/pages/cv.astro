@@ -8,6 +8,11 @@ import "../styles/cv-print.css";
 
 import { getEntry, render } from "astro:content";
 const entry = await getEntry("cv", "resume");
+
+if (!entry) {
+  throw new Error("CV resume entry not found");
+}
+
 const { Content, headings } = await render(entry);
 
 // Get all data from frontmatter
@@ -17,7 +22,8 @@ const {
   fullName,
   sections = [
     { id: "experience", label: "Experience" },
-    { id: "skills", label: "Skills" },
+    { id: "professional-skills", label: "Professional Skills" },
+    { id: "technical-skills", label: "Technical Skills" },
     { id: "languages", label: "Languages" },
     { id: "education", label: "Education" }
   ],
@@ -25,23 +31,23 @@ const {
 } = entry.data;
 
 // Page metadata - built from resume data
-const pageTitle = title ? `${title} | CV` : "Erfi Anugrah - CV";
-const description = resumeDescription || "Professional CV for Erfi Anugrah - Customer Solutions Engineer at Cloudflare with expertise in solution design, technical onboarding, and customer success.";
-const site_name = "stoicopa";
+const pageTitle = title ? `${title} | CV` : "Shaun Evans - CV";
+const description = resumeDescription || "Saxophonist, Arranger, Musical Director and Producer Shaun Evans - Specialist in making big things happen with many pieces.  Mentor and clinician for the next generation of upcoming musicians.";
+const site_name = "shaunevans.com";
 
 // Person schema for structured data
 const personSchema = {
   "@context": "https://schema.org",
   "@type": "Person",
-  "name": title || "Erfi Anugrah",
-  "jobTitle": resumeDescription || "Customer Solutions Engineer",
+  "name": title || "Shaun Evans",
+  "jobTitle": resumeDescription || "Prodigious arranger, International saxophonist, Musical Director, Producer and Clinician",
   "url": new URL(Astro.url.pathname, Astro.site).href,
   "sameAs": contacts?.map(contact => contact.url) || [],
   "workLocation": {
     "@type": "Place",
-    "name": entry.data.companies?.[0]?.name || "Cloudflare"
+    "name": entry.data.companies?.[0]?.name || "PepperHorn Music / pepperhorn.com"
   },
-  "knowsAbout": ["Web Development", "Cloud Computing", "Network Security"]
+  "knowsAbout": ["Music", "Music Arranging", "Music Orchestration", "Musical Direction", "Production", "Saxophone", "Jazz", "Big Band", "Jazz Theory", "Musical History", "Swing","Smooth Jazz", "Music Eduction", "Music Production", "Stage Shows", "Cruise Ship Entertainment", "Casino Entertainment","Resort Entertainment", "World Class Entertainment"]
 };
 
 // Helper function for shorter contact labels on mobile
@@ -61,7 +67,7 @@ const getShortLabel = (contact) => {
   description={description}
   site_name={site_name}
   is404Page={false}
-  hideHeaderFooter={true}
+  hideHeaderFooter={false}
 >
   <!-- Structured data for SEO -->
   <script type="application/ld+json" set:html={JSON.stringify(personSchema)} />
@@ -146,7 +152,7 @@ const getShortLabel = (contact) => {
     </div>
 
     <!-- CV content -->
-    <div id="cv-content" data-updated-date={new Date(entry.data.updatedDate).toLocaleDateString('en-US', {year: 'numeric', month: 'short', day: 'numeric'})}>
+    <div id="cv-content" data-updated-date={entry.data.updatedDate ? new Date(entry.data.updatedDate).toLocaleDateString('en-US', {year: 'numeric', month: 'short', day: 'numeric'}) : ''}>
       <ProseCv>
         <Content />
       </ProseCv>
@@ -215,7 +221,7 @@ const getShortLabel = (contact) => {
       
       // Close menu on Escape key
       elements.navLinks.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && window.innerWidth < 768) {
+        if (e.key === 'Escape' && window.innerWidth < 768 && elements.navToggle && elements.navLinks && elements.navIcon) {
           elements.navToggle.setAttribute('aria-expanded', 'false');
           elements.navLinks.classList.add('hidden');
           elements.navIcon.classList.remove('rotate-180');
@@ -276,7 +282,8 @@ const getShortLabel = (contact) => {
             setTimeout(() => targetElement.classList.remove('highlight-section'), 2000);
             
             // Calculate offset based on sticky header
-            const headerHeight = document.querySelector('.cv-nav')?.offsetHeight || 0;
+            const navElement = document.querySelector('.cv-nav') as HTMLElement | null;
+            const headerHeight = navElement?.offsetHeight || 0;
             const targetPosition = targetElement.getBoundingClientRect().top + window.pageYOffset - headerHeight - 20;
             
             // Smooth scroll
@@ -299,7 +306,7 @@ const getShortLabel = (contact) => {
             link.setAttribute('aria-current', 'true');
             
             // Close mobile nav if needed
-            if (window.innerWidth < 768 && elements.navLinks.classList.contains('expanded')) {
+            if (window.innerWidth < 768 && elements.navLinks && elements.navToggle && elements.navIcon && elements.navLinks.classList.contains('expanded')) {
               elements.navToggle.setAttribute('aria-expanded', 'false');
               elements.navLinks.classList.remove('expanded');
               elements.navLinks.classList.add('hidden');
@@ -322,9 +329,9 @@ const getShortLabel = (contact) => {
     };
     
     const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const id = entry.target.getAttribute('id');
+      entries.forEach(obsEntry => {
+        if (obsEntry.isIntersecting) {
+          const id = obsEntry.target.getAttribute('id');
           if (id) {
             // Update URL hash without scrolling
             history.replaceState(null, null, `#${id}`);

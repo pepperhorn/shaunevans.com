@@ -4,7 +4,7 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
 import BlogPost from "../../components/BlogPost.astro";
 
 export async function getStaticPaths() {
-  const allMuses = await getCollection("muses");
+  const allMuses = await getCollection("shared");
   const allPosts = await Astro.glob("../../content/*/*.md");
   const uniqueTags = [
     ...new Set(allMuses.map((post) => post.data.tags).flat()),
@@ -30,7 +30,7 @@ const { posts } = Astro.props;
   <ul>
     {
       posts.map((post) => (
-        <BlogPost url={`/muses/${post.id}/`} title={post.data.title} />
+        <BlogPost url={`/shared/${post.id}/`} title={post.data.title} />
       ))
     }
   </ul>

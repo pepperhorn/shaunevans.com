@@ -1,0 +1,33 @@
+---
+import { Image } from "astro:assets";
+import signatureImage from "../assets/images/Signature.png";
+
+interface Props {
+  width?: number;
+}
+
+const { width = 200 } = Astro.props;
+
+// Calculate height to maintain aspect ratio (original: 1116 x 552)
+const aspectRatio = 1116 / 552;
+const height = Math.round(width / aspectRatio);
+---
+
+<Image
+  src={signatureImage}
+  alt="Shaun Evans Signature"
+  width={width}
+  height={height}
+  format="webp"
+  quality={90}
+  decoding="async"
+  loading="lazy"
+  class="signature-image"
+/>
+
+<style>
+  .signature-image {
+    display: inline-block;
+  }
+</style>
+

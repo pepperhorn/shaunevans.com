@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
 
 export default function Hamburger() {
   const [isOpen, setIsOpen] = useState(false)
@@ -41,35 +40,27 @@ export default function Hamburger() {
       className="w-[30px] h-[30px] bg-transparent border-0 p-0 cursor-pointer relative hamburger flex items-center justify-center"
       aria-label={isOpen ? "Close menu" : "Open menu"}
     >
-      <motion.div
-        className="relative w-[24px] h-[18px]"
-        animate={isOpen ? "open" : "closed"}
-      >
-        <motion.span
-          className="absolute h-[2px] w-full bg-current left-0"
-          variants={{
-            closed: { rotate: 0, translateY: 0, top: '0px' },
-            open: { rotate: 45, translateY: 8, top: '0px' },
-          }}
-          transition={{ duration: 0.3 }}
+      <div className={`relative w-[24px] h-[18px] transition-all duration-300`}>
+        <span
+          className={`absolute h-[2px] w-full bg-current left-0 transition-all duration-300 ${
+            isOpen 
+              ? 'rotate-45 translate-y-[8px] top-0' 
+              : 'rotate-0 translate-y-0 top-0'
+          }`}
         />
-        <motion.span
-          className="absolute h-[2px] w-full bg-current left-0 top-[8px]"
-          variants={{
-            closed: { opacity: 1 },
-            open: { opacity: 0 },
-          }}
-          transition={{ duration: 0.3 }}
+        <span
+          className={`absolute h-[2px] w-full bg-current left-0 top-[8px] transition-opacity duration-300 ${
+            isOpen ? 'opacity-0' : 'opacity-100'
+          }`}
         />
-        <motion.span
-          className="absolute h-[2px] w-full bg-current left-0"
-          variants={{
-            closed: { rotate: 0, translateY: 0, top: '16px' },
-            open: { rotate: -45, translateY: -8, top: '16px' },
-          }}
-          transition={{ duration: 0.3 }}
+        <span
+          className={`absolute h-[2px] w-full bg-current left-0 transition-all duration-300 ${
+            isOpen 
+              ? 'rotate-[-45deg] translate-y-[-8px] top-[16px]' 
+              : 'rotate-0 translate-y-0 top-[16px]'
+          }`}
         />
-      </motion.div>
+      </div>
     </button>
   )
 }

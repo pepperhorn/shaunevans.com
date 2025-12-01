@@ -1,7 +1,7 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { getCollection } from "astro:content";
-const allMuses = await getCollection("muses");
+const allMuses = await getCollection("shared");
 const allPosts = await Astro.glob("../../content/*/*.md");
 const tags = [...new Set(allMuses.map((post) => post.data.tags).flat())];
 const pageTitle = "Tag Index";

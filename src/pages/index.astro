@@ -3,11 +3,12 @@ import Homepage from "../components/Homepage.astro";
 const { pageTitle } = Astro.props;
 import { getCollection } from "astro:content";
 import { getImage } from "astro:assets";
+import { resolveImage } from "../utils/imageMap";
 
-const collections = ["long_form", "short_form", "muses", "zeitweilig"];
-let allImages = { large: [], medium: [], small: [] };
-let allAlts = [];
-let allUrls = [];
+const collections = ["stories", "new_charts", "shared"] as const;
+let allImages: { large: string[]; medium: string[]; small: string[] } = { large: [], medium: [], small: [] };
+let allAlts: string[] = [];
+let allUrls: string[] = [];
 
 for (let collection of collections) {
   const allContent = await getCollection(collection);
@@ -16,9 +17,12 @@ for (let collection of collections) {
   );
 
   const imagePromises = postsWithImages.map(async (post) => {
-    const [largeImage, mediumImage, smallImage] = await Promise.all([
+    if (!post.data.image) return null;
+    try {
+      const resolvedSrc = resolveImage(post.data.image.src);
+      const [largeImage, mediumImage, smallImage] = await Promise.all([
       getImage({
-        src: post.data.image.src,
+        src: resolvedSrc,
         alt: post.data.image.alt,
         width: 1920,
         height: 1080,
@@ -27,7 +31,7 @@ for (let collection of collections) {
         quality: 65,
       }),
       getImage({
-        src: post.data.image.src,
+        src: resolvedSrc,
         alt: post.data.image.alt,
         width: 1280,
         height: 720,
@@ -36,7 +40,7 @@ for (let collection of collections) {
         quality: 65,
       }),
       getImage({
-        src: post.data.image.src,
+        src: resolvedSrc,
         alt: post.data.image.alt,
         width: 854,
         height: 480,
@@ -46,23 +50,29 @@ for (let collection of collections) {
       }),
     ]);
 
-    return {
-      large: largeImage.src,
-      medium: mediumImage.src,
-      small: smallImage.src,
-      alt: post.data.image.alt,
-      url: `/${collection}/${post.id}`,
-    };
+      return {
+        large: largeImage.src,
+        medium: mediumImage.src,
+        small: smallImage.src,
+        alt: post.data.image.alt,
+        url: `/${collection}/${post.id}`,
+      };
+    } catch (error) {
+      console.warn(`Skipping image for post ${post.id}:`, error.message);
+      return null;
+    }
   });
 
   const results = await Promise.all(imagePromises);
 
   results.forEach((result) => {
-    allImages.large.push(result.large);
-    allImages.medium.push(result.medium);
-    allImages.small.push(result.small);
-    allAlts.push(result.alt);
-    allUrls.push(result.url);
+    if (result) {
+      allImages.large.push(result.large);
+      allImages.medium.push(result.medium);
+      allImages.small.push(result.small);
+      allAlts.push(result.alt);
+      allUrls.push(result.url);
+    }
   });
 }
 

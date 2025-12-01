@@ -2,10 +2,11 @@
 import { getCollection } from "astro:content";
 import { getImage } from "astro:assets";
 import Prose from "./Prose.astro";
+import { resolveImage } from "../utils/imageMap";
 
 export interface Props {
   currentId: string;
-  collection: string;
+  collection: "stories" | "new_charts" | "shared" | "authors";
 }
 
 const { currentId, collection } = Astro.props;
@@ -15,16 +16,22 @@ const otherPosts = allPosts.filter((post) => post.id !== currentId);
 const shouldRender = otherPosts.length > 0;
 
 async function optimizeImage(src, alt) {
-  return await getImage({
-    src,
-    alt,
-    // layout: "responsive",
-    width: 640,
-    height: 360,
-    format: "avif",
-    quality: 65,
-    decoding: "async",
-  });
+  try {
+    const resolvedSrc = resolveImage(src);
+    return await getImage({
+      src: resolvedSrc,
+      alt,
+      // layout: "responsive",
+      width: 640,
+      height: 360,
+      format: "avif",
+      quality: 65,
+      decoding: "async",
+    });
+  } catch (error) {
+    console.warn(`Skipping image optimization:`, error.message);
+    return null;
+  }
 }
 
 const postsData = await Promise.all(
@@ -45,10 +52,12 @@ const postsData = await Promise.all(
   }),
 );
 
-const favicon = await optimizeImage(
-  "https://cdn.erfianugrah.com/ea_favicon.png",
-  "favicon",
-);
+// Use local logo as favicon fallback
+let faviconData = {
+  src: "/logos/pathcircleinv.svg", // Use local logo
+  width: 400,
+  height: 400,
+};
 ---
 
 {
@@ -72,11 +81,7 @@ const favicon = await optimizeImage(
           style="min-width: min-content;"
           data-posts={JSON.stringify(postsData)}
           data-collection={collection}
-          data-favicon={JSON.stringify({
-            src: favicon.src,
-            width: favicon.attributes.width,
-            height: favicon.attributes.height,
-          })}
+          data-favicon={JSON.stringify(faviconData || { src: "", width: 0, height: 0 })}
         >
           {[...Array(3)].map((_, index) => (
             <a
@@ -128,7 +133,7 @@ const favicon = await optimizeImage(
     const shuffledPosts = shuffleArray([...posts]);
     const selectedPosts = shuffledPosts.slice(0, 3);
 
-    const postElements = container.querySelectorAll(".post-item");
+    const postElements = container.querySelectorAll<HTMLAnchorElement>(".post-item");
     selectedPosts.forEach((post, index) => {
       const element = postElements[index];
       if (element) {

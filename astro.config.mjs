@@ -2,7 +2,6 @@ import { defineConfig, fontProviders } from "astro/config";
 import sitemap from "@astrojs/sitemap";
 import mdx from "@astrojs/mdx";
 import markdoc from "@astrojs/markdoc";
-import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import icon from "astro-icon";
@@ -13,13 +12,13 @@ import tailwindcss from "@tailwindcss/vite";
 // https://astro.build/config
 export default defineConfig({
   site: process.env.GITHUB_PAGES === 'true' ? "https://erfianugrah.github.io" : "https://www.erfianugrah.com",
-  base: process.env.GITHUB_PAGES === 'true' ? "/revista-3" : undefined,
+  base: process.env.GITHUB_PAGES === 'true' ? "/shaunevans" : undefined,
 
   image: {
     // responsiveStyles: true,
     // layout: "full-width",
     // objectFit: "contain",
-    domains: ["erfianugrah.com", "cdn.erfianugrah.com"],
+    domains: ["https://shaunevans.com"],
     service: {
       entrypoint: "astro/assets/services/sharp",
       config: {
@@ -65,7 +64,7 @@ export default defineConfig({
       wrap: true,
     },
     gfm: false,
-    remarkPlugins: [remarkGfm, remarkMath, remarkReadingTime],
+    remarkPlugins: [remarkMath, remarkReadingTime],
     rehypePlugins: [rehypeKatex],
   },
 
@@ -117,5 +116,9 @@ export default defineConfig({
 
   vite: {
     plugins: [tailwindcss()],
+  },
+
+  devToolbar: {
+    enabled: false,
   },
 });
