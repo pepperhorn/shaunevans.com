@@ -104,7 +104,9 @@ const metaImage = isLocalImage && resolvedImage
     ) : (
       <div data-pagefind-body>
         <Prose>
-          <h1 class="normal-case font-overpass-mono text-4xl -mb-1 mt-4">
+          <h1 
+            class="normal-case font-overpass-mono text-4xl -mb-1 mt-4 post-title-h1"
+          >
             {title}
           </h1>
           <div class="flex">
@@ -190,5 +192,14 @@ const metaImage = isLocalImage && resolvedImage
 
   .delay-600 {
     animation-delay: 600ms;
+  }
+
+  /* Force h1 color for stories/shared/new_charts */
+  .post-title-h1 {
+    color: rgb(71, 85, 105) !important; /* slate-600 */
+  }
+
+  .dark .post-title-h1 {
+    color: rgb(245, 245, 245) !important;
   }
 </style>

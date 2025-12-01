@@ -55,6 +55,15 @@ h1 {
   font-size: 2.5rem;
 }
 
+/* Override prose h1 color for stories/shared/new_charts in light theme */
+.prose h1.font-overpass-mono {
+  color: rgb(71, 85, 105) !important; /* slate-600 */
+}
+
+.dark .prose h1.font-overpass-mono {
+  color: rgb(245, 245, 245) !important;
+}
+
 /* Center YouTube embeds */
 .prose iframe[src*="youtube"],
 .prose iframe[src*="youtu.be"],

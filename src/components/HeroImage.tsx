@@ -93,7 +93,12 @@ export default function HeroImage({
         />
       </div>
       <div className="relative">
-        <h1 className="prose prose-slate uppercase font-overpass-mono text-[rgb(245,245,245)] text-4xl fade-in-up delay-150">
+        <h1 
+          className="prose prose-slate uppercase font-overpass-mono text-slate-600 dark:text-[rgb(245,245,245)] text-4xl fade-in-up delay-150"
+          style={{
+            textShadow: '2px 2px 0px rgba(229, 231, 235, 0.5), -2px -2px 0px rgba(229, 231, 235, 0.5), 2px -2px 0px rgba(229, 231, 235, 0.5), -2px 2px 0px rgba(229, 231, 235, 0.5), 0px 2px 0px rgba(229, 231, 235, 0.5), 0px -2px 0px rgba(229, 231, 235, 0.5), 2px 0px 0px rgba(229, 231, 235, 0.5), -2px 0px 0px rgba(229, 231, 235, 0.5)',
+          }}
+        >
           {title}
         </h1>
         <div className="flex gap-2 mt-2 fade-in-up delay-300 justify-center">
