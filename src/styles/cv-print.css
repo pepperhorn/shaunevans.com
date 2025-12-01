@@ -18,10 +18,15 @@
     filter: none !important;
   }
   
-  /* Custom print wrapper */
+  
+  /* Custom print wrapper - reset all spacing */
   .cv-print-wrapper {
     background-color: white !important;
     color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
   
   /* All content within print wrapper should use light theme */
@@ -40,9 +45,11 @@
     font-family: 'Inconsolata', monospace !important;
     margin: 0 !important;
     padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-    color-adjust: exact !important;
   }
   
   /* Ensure consistent font family throughout */
@@ -60,7 +67,6 @@
   html {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-    color-adjust: exact !important;
   }
   
   /* Container adjustments */
@@ -73,6 +79,12 @@
     border: none !important;
     background-color: #fff !important;
     color: #000 !important;
+  }
+  
+  /* Reset mx-auto (margin auto) which can cause centering issues in PDF */
+  .mx-auto {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
   }
   
   /* Make sure all wrappers use light theme */
@@ -103,30 +115,34 @@
   /* Standard typographic scale for print */
   h1 {
     font-size: 14pt !important;
-    margin-bottom: 0.2cm !important;
+    margin-top: 0 !important;
+    margin-bottom: 0.1cm !important;
     color: #000 !important;
     font-family: 'Inconsolata', monospace !important;
   }
   
   h2 {
     font-size: 12pt !important;
-    margin-bottom: 0.15cm !important;
+    margin-top: 0.15cm !important;
+    margin-bottom: 0.08cm !important;
     border-bottom: 1pt solid #000 !important;
-    padding-bottom: 0.08cm !important;
+    padding-bottom: 0.05cm !important;
     color: #000 !important;
     font-family: 'Inconsolata', monospace !important;
   }
   
   h3 {
     font-size: 10pt !important;
-    margin-bottom: 0.1cm !important;
+    margin-top: 0 !important;
+    margin-bottom: 0.05cm !important;
     color: #000 !important;
     font-family: 'Inconsolata', monospace !important;
   }
   
   h4 {
     font-size: 9pt !important;
-    margin-bottom: 0.1cm !important;
+    margin-top: 0 !important;
+    margin-bottom: 0.05cm !important;
     color: #000 !important;
     font-family: 'Inconsolata', monospace !important;
   }
@@ -176,8 +192,8 @@
     margin-top: 0 !important;
     padding-top: 0 !important;
     font-size: 11pt !important;
-    margin-bottom: 0.1cm !important;
-    padding-bottom: 0.05cm !important;
+    margin-bottom: 0.05cm !important;
+    padding-bottom: 0.03cm !important;
   }
   
   h2#experience + * {
@@ -188,8 +204,8 @@
   h2#skills {
     page-break-before: always !important;
     break-before: page !important;
-    margin-top: 1cm !important;
-    padding-top: 0.5cm !important;
+    margin-top: 0.3cm !important;
+    padding-top: 0.1cm !important;
     page-break-after: avoid !important;
     break-after: avoid !important;
   }
@@ -197,8 +213,8 @@
   h2#languages, h2#education {
     page-break-before: always !important;
     break-before: page !important;
-    margin-top: 0.5cm !important;
-    padding-top: 0.5cm !important;
+    margin-top: 0.2cm !important;
+    padding-top: 0.1cm !important;
     page-break-after: avoid !important;
     break-after: avoid !important;
   }
@@ -271,13 +287,13 @@
   
   /* Standard page breaks for companies and positions */
   .company-wrapper > .company-section {
-    margin-top: 0.3cm !important;
-    margin-bottom: 0.2cm !important;
+    margin-top: 0.1cm !important;
+    margin-bottom: 0.1cm !important;
   }
   
   .job-section {
-    margin-top: 0.15cm !important;
-    margin-bottom: 0.15cm !important;
+    margin-top: 0.08cm !important;
+    margin-bottom: 0.08cm !important;
   }
   
   /* Special handling for skills-languages-education section */
@@ -287,26 +303,27 @@
   }
   
   .skills-languages-education section {
-    margin-bottom: 0.6cm !important;
+    margin-bottom: 0.2cm !important;
   }
   
   /* Adjust spacing for sections */
   .skills-languages-education h2 {
-    margin-bottom: 0.15cm !important;
-    padding-bottom: 0.05cm !important;
+    margin-bottom: 0.08cm !important;
+    padding-bottom: 0.03cm !important;
   }
   
   .skills-languages-education #languages {
-    margin-top: 0.3cm !important;
+    margin-top: 0.15cm !important;
   }
   
   .skills-languages-education #education {
-    margin-top: 0.3cm !important;
+    margin-top: 0.15cm !important;
   }
   
   /* Add a tiny bit of spacing after paragraphs */
   p {
-    margin-bottom: 0.15cm !important;
+    margin-top: 0 !important;
+    margin-bottom: 0.05cm !important;
   }
   
   /* Hide UI elements - more comprehensive */
@@ -346,6 +363,73 @@
     pointer-events: none !important;
   }
   
+  /* Specifically hide header and all header elements in print */
+  header,
+  header *,
+  header nav,
+  header a,
+  header img,
+  header svg,
+  header .flex,
+  header .favicon,
+  [class*="header"],
+  [class*="favicon"],
+  [alt="Home"],
+  a[href="/"],
+  /* Hamburger menu */
+  [class*="hamburger"],
+  [class*="Hamburger"],
+  /* Navigation menu */
+  [class*="Navigation"],
+  [class*="navigation"],
+  /* Theme toggle in header */
+  [class*="ThemeToggle"],
+  [class*="theme-toggle"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    position: absolute !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  /* Specifically hide footer and all social icons in print */
+  footer,
+  footer *,
+  footer a,
+  footer svg,
+  footer .flex,
+  footer .gap-3,
+  [class*="footer"],
+  a[href*="github"],
+  a[href*="linkedin"],
+  a[href*="instagram"],
+  a[href*="rss"],
+  a[id="rss-link"],
+  [aria-label*="GitHub"],
+  [aria-label*="LinkedIn"],
+  [aria-label*="Instagram"],
+  [aria-label*="RSS"],
+  [title*="GitHub"],
+  [title*="LinkedIn"],
+  [title*="Instagram"],
+  [title*="RSS"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    position: absolute !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
   /* Selectively show contact icons in print */
   a svg {
     display: inline-block !important;
@@ -362,8 +446,20 @@
   .bg-slate-100, .dark\:bg-slate-700, .dark\:bg-slate-800, .bg-white {
     background-color: #fff !important;
     padding: 0 !important;
-    margin-bottom: 0.5cm !important;
+    margin: 0 !important;
+    margin-bottom: 0.1cm !important;
     color: #000 !important;
+  }
+  
+  /* Reset all padding classes that might affect layout */
+  .px-4, .px-8, .py-6, .sm\:px-8 {
+    padding: 0 !important;
+  }
+  
+  /* Reset gap and space utilities */
+  .gap-4, .gap-2, .space-y-2 {
+    gap: 0 !important;
+    margin: 0 !important;
   }
 
   /* Make sure name and job title appear */
@@ -481,15 +577,15 @@
   
   /* Company and job sections */
   .company-section {
-    margin-top: 0.25cm !important;
-    margin-bottom: 0.2cm !important;
+    margin-top: 0.1cm !important;
+    margin-bottom: 0.08cm !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
   
   .job-section, .education-section {
-    margin-top: 0.15cm !important;
-    margin-bottom: 0.15cm !important;
+    margin-top: 0.08cm !important;
+    margin-bottom: 0.08cm !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
@@ -519,8 +615,8 @@
   
   /* Improved list formatting */
   ul {
-    margin-top: 0.1cm !important;
-    margin-bottom: 0.15cm !important;
+    margin-top: 0.05cm !important;
+    margin-bottom: 0.08cm !important;
     padding-left: 0.4cm !important;
   }
   
@@ -529,15 +625,16 @@
     break-inside: auto !important;
     orphans: 2 !important;
     widows: 2 !important;
-    margin-bottom: 0.05cm !important;
+    margin-top: 0 !important;
+    margin-bottom: 0.02cm !important;
     font-size: 9pt !important;
     font-family: 'Inconsolata', monospace !important;
   }
   
   /* Nested lists */
   li ul {
-    margin-top: 0.03cm !important;
-    margin-bottom: 0.03cm !important;
+    margin-top: 0.02cm !important;
+    margin-bottom: 0.02cm !important;
   }
   
   /* Hide visual elements */
@@ -622,7 +719,7 @@
   /* Professional page header/footer */
   @page {
     @top-center {
-      content: "Erfi Anugrah | Curriculum Vitae";
+      content: "Shaun Evans | Professional Resume";
       font-family: 'Inconsolata', monospace;
       font-size: 9pt;
       color: #666;
@@ -634,7 +731,7 @@
       color: #666;
     }
     @bottom-right {
-      content: "www.erfianugrah.com/cv";
+      content: "shaunevans.com/cv";
       font-family: 'Inconsolata', monospace;
       font-size: 8pt;
       color: #666;
@@ -650,12 +747,12 @@
   /* Job section separators */
   .job-section:not(:last-child) {
     border-bottom: 1px dotted #ccc !important;
-    padding-bottom: 0.2cm !important;
+    padding-bottom: 0.1cm !important;
   }
   
   /* Job section specific print styles */
   .job-section {
-    margin-bottom: 0.2cm !important;
+    margin-bottom: 0.1cm !important;
     padding-left: 0 !important;
     position: relative !important;
   }
@@ -673,6 +770,7 @@
   /* Expand any truncated text */
   .line-clamp-2, .line-clamp-3 {
     -webkit-line-clamp: unset !important;
+    line-clamp: unset !important;
     display: block !important;
     overflow: visible !important;
     text-overflow: unset !important;
@@ -681,8 +779,9 @@
   
   /* CV content area padding */
   #cv-content {
-    padding: 0 0.5cm !important;
+    padding: 0 !important;
     margin: 0 !important;
+    width: 100% !important;
   }
 
   /* Fix footer overflow */

@@ -295,6 +295,52 @@ import { Section, Company, Timeline, SkillBar, EducationTimeline, ColorLegend } 
         page-break-before: avoid !important;
         break-before: avoid !important;
       }
+      
+      /* Hide header and all header elements in print */
+      header,
+      header *,
+      header nav,
+      header a,
+      header img,
+      header svg,
+      [class*="header"],
+      [class*="favicon"],
+      [alt="Home"],
+      a[href="/"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        height: 0 !important;
+        width: 0 !important;
+        position: absolute !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      
+      /* Hide footer and social icons in print */
+      footer,
+      footer *,
+      footer a,
+      footer svg,
+      footer .flex,
+      [class*="footer"],
+      a[href*="github"],
+      a[href*="linkedin"],
+      a[href*="instagram"],
+      a[href*="rss"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        height: 0 !important;
+        width: 0 !important;
+        position: absolute !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
     }
   `}
 </style>
