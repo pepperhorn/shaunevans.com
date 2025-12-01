@@ -11,7 +11,7 @@ import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
 // https://astro.build/config
 export default defineConfig({
-  site: process.env.GITHUB_PAGES === 'true' ? "https://erfianugrah.github.io" : "https://www.erfianugrah.com",
+  site: process.env.GITHUB_PAGES === 'true' ? "https://pepperhorn.github.io" : "https://shaunevans.com",
   base: process.env.GITHUB_PAGES === 'true' ? "/shaunevans" : undefined,
 
   image: {
@@ -22,7 +22,7 @@ export default defineConfig({
     service: {
       entrypoint: "astro/assets/services/sharp",
       config: {
-        limitInputPixels: false,
+        limitInputPixels: 268402689, // ~16k x 16k pixels (default Sharp limit)
       },
     },
   },
@@ -100,7 +100,7 @@ export default defineConfig({
   },
 
   build: {
-    concurrency: 4,
+    concurrency: 2, // Reduced from 4 to reduce memory pressure during image optimization
     measuring: {
       entryBuilding: true,
       pageGeneration: true,

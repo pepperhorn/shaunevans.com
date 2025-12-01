@@ -1,22 +1,48 @@
 ---
 import "../styles/MasonryLayout.css";
 import { getImage } from "astro:assets";
-import { resolveImage } from "../utils/imageMap";
+import { resolveImage, isExternalImage } from "../utils/imageMap";
 const { images } = Astro.props;
 const imageAssets = await Promise.all(
   images.map(async (image) => {
     if (image) {
       try {
         const resolvedSrc = resolveImage(image.src);
-        return await getImage({
+        
+        // Handle external URLs (from CMS)
+        if (isExternalImage(resolvedSrc)) {
+          return {
+            src: resolvedSrc,
+            alt: image.alt,
+            width: 3840,
+            height: 2160,
+            loading: "lazy",
+            decoding: "async",
+            isExternal: true,
+          };
+        }
+        
+        // Handle local images (optimize with Astro)
+        // Use smaller size for gallery thumbnails to reduce memory usage
+        const optimizedImage = await getImage({
           src: resolvedSrc,
           alt: image.alt,
-          width: 3840,
-          height: 2160,
+          width: 1280,
+          height: 720,
           decoding: "async",
           format: "avif",
           loading: "lazy",
         });
+        
+        return {
+          src: optimizedImage.src,
+          alt: optimizedImage.attributes.alt,
+          width: optimizedImage.attributes.width,
+          height: optimizedImage.attributes.height,
+          loading: optimizedImage.attributes.loading,
+          decoding: optimizedImage.attributes.decoding,
+          isExternal: false,
+        };
       } catch (error) {
         console.warn(`Skipping image in gallery:`, error.message);
         return null;
@@ -35,11 +61,11 @@ const imageAssets = await Promise.all(
           <a href={imageAsset.src} class="image-link glightbox">
             <img
               src={imageAsset.src}
-              alt={imageAsset.attributes.alt}
-              loading={imageAsset.attributes.loading}
-              decoding={imageAsset.attributes.decoding}
-              width={imageAsset.attributes.width}
-              height={imageAsset.attributes.height}
+              alt={imageAsset.alt}
+              loading={imageAsset.loading}
+              decoding={imageAsset.decoding}
+              width={imageAsset.width}
+              height={imageAsset.height}
               class="image"
             />
           </a>

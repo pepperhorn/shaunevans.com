@@ -2,7 +2,7 @@
 import { getCollection } from "astro:content";
 import { getImage } from "astro:assets";
 import Prose from "./Prose.astro";
-import { resolveImage } from "../utils/imageMap";
+import { resolveImage, isExternalImage } from "../utils/imageMap";
 
 export interface Props {
   currentId: string;
@@ -18,6 +18,12 @@ const shouldRender = otherPosts.length > 0;
 async function optimizeImage(src, alt) {
   try {
     const resolvedSrc = resolveImage(src);
+    
+    // Skip external URLs - they can't be optimized at build time
+    if (isExternalImage(resolvedSrc)) {
+      return { src: resolvedSrc, attributes: { alt } };
+    }
+    
     return await getImage({
       src: resolvedSrc,
       alt,

@@ -6,7 +6,7 @@ import Prose from "../components/Prose.astro";
 import { getImage } from "astro:assets";
 import HeroImage from "../components/HeroImage.tsx";
 import NextPost from "../components/NextPost.astro";
-import { resolveImage } from "../utils/imageMap";
+import { resolveImage, isExternalImage } from "../utils/imageMap";
 
 const { frontmatter, currentId, collection } = Astro.props;
 const updatedDate = frontmatter?.updatedDate
@@ -36,7 +36,10 @@ const positionx = frontmatter?.image?.positionx;
 const positiony = frontmatter?.image?.positiony;
 let baseUrl = new URL(Astro.request.url).origin;
 
-const backgroundImage = resolvedImage
+// Only optimize local images - skip external URLs
+const isLocalImage = resolvedImage && !isExternalImage(resolvedImage);
+
+const backgroundImage = isLocalImage && resolvedImage
   ? await getImage({
       src: resolvedImage,
       alt: alt,
@@ -49,7 +52,7 @@ const backgroundImage = resolvedImage
     })
   : null;
 
-const mobileBackgroundImage = resolvedImage
+const mobileBackgroundImage = isLocalImage && resolvedImage
   ? await getImage({
       src: resolvedImage,
       alt: alt,
@@ -63,7 +66,7 @@ const mobileBackgroundImage = resolvedImage
     })
   : null;
 
-const metaImage = resolvedImage
+const metaImage = isLocalImage && resolvedImage
   ? await getImage({
       src: resolvedImage,
       alt: alt,

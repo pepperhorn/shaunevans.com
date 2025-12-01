@@ -17,6 +17,7 @@
     "ui": "node scripts/update-post-interactive.js"
   },
   "dependencies": {
+    "@astro-community/astro-embed-youtube": "^0.5.9",
     "@astrojs/check": "0.9.5",
     "@astrojs/markdoc": "0.15.9",
     "@astrojs/mdx": "4.3.12",
@@ -50,6 +51,7 @@
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
     "sanitize-html": "^2.17.0",
+    "sharp": "^0.34.5",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.14",
     "typescript": "^5.9.3",

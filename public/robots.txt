@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://www.erfianugrah.com/sitemap-index.xml
+Sitemap: https://shaunevans.com/sitemap-index.xml

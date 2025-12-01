@@ -3,7 +3,7 @@ import Homepage from "../components/Homepage.astro";
 const { pageTitle } = Astro.props;
 import { getCollection } from "astro:content";
 import { getImage } from "astro:assets";
-import { resolveImage } from "../utils/imageMap";
+import { resolveImage, isExternalImage } from "../utils/imageMap";
 
 const collections = ["stories", "new_charts", "shared"] as const;
 let allImages: { large: string[]; medium: string[]; small: string[] } = { large: [], medium: [], small: [] };
@@ -13,13 +13,20 @@ let allUrls: string[] = [];
 for (let collection of collections) {
   const allContent = await getCollection(collection);
   const postsWithImages = allContent.filter(
-    (post) => post.data.image?.src && post.data.image?.alt,
+    (post) => post.data.image?.src && post.data.image?.alt && post.data.tags?.includes("featured"),
   );
 
   const imagePromises = postsWithImages.map(async (post) => {
     if (!post.data.image) return null;
     try {
       const resolvedSrc = resolveImage(post.data.image.src);
+      
+      // Skip external URLs - they can't be optimized at build time
+      if (isExternalImage(resolvedSrc)) {
+        console.warn(`Skipping external image for post ${post.id}: ${resolvedSrc}`);
+        return null;
+      }
+      
       const [largeImage, mediumImage, smallImage] = await Promise.all([
       getImage({
         src: resolvedSrc,

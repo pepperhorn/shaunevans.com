@@ -1,0 +1,49 @@
+---
+import { Image } from "astro:assets";
+import { resolveImage, isExternalImage } from "../utils/imageMap";
+
+interface Props {
+  src: string;
+  alt: string;
+  width?: number;
+  height?: number;
+  class?: string;
+}
+
+const { src, alt, width = 800, height, class: className = "" } = Astro.props;
+
+let resolvedSrc = null;
+try {
+  resolvedSrc = resolveImage(src);
+} catch (error) {
+  console.warn(`Failed to resolve inline image "${src}":`, error.message);
+}
+---
+
+{resolvedSrc ? (
+  <div class={`flex justify-center my-4 ${className}`}>
+    {isExternalImage(resolvedSrc) ? (
+      // External URL from CMS - use regular img tag (Astro can optimize if domain is configured)
+      <img
+        src={resolvedSrc}
+        alt={alt}
+        width={width}
+        height={height}
+        loading="lazy"
+        decoding="async"
+      />
+    ) : (
+      // Local image - use Astro's optimized Image component
+      <Image
+        src={resolvedSrc}
+        alt={alt}
+        width={width}
+        height={height}
+        loading="lazy"
+        decoding="async"
+        format="avif"
+      />
+    )}
+  </div>
+) : null}
+

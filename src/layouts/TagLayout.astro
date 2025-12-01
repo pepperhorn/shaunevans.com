@@ -3,7 +3,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import GetRandomImage from "../components/getRandomImage.astro";
 import { getCollection } from "astro:content";
 import { getImage } from "astro:assets";
-import { resolveImage } from "../utils/imageMap";
+import { resolveImage, isExternalImage } from "../utils/imageMap";
 
 const { directory, title } = Astro.props;
 const allContent = await getCollection(directory);
@@ -20,6 +20,13 @@ for (const post of allContent) {
     if (postData.image?.src) {
       try {
         const resolvedSrc = resolveImage(postData.image.src);
+        
+        // Skip external URLs - they can't be optimized at build time
+        if (isExternalImage(resolvedSrc)) {
+          console.warn(`Skipping external image for post ${postId} in tag ${tag}: ${resolvedSrc}`);
+          continue;
+        }
+        
         const [largeImage, mediumImage, smallImage] = await Promise.all([
         getImage({
           src: resolvedSrc,
