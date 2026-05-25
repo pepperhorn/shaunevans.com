@@ -202,30 +202,31 @@ const getShortLabel = (contact) => {
 
     // Mobile navigation toggle
     if (elements.navToggle && elements.navLinks && elements.navIcon) {
-      elements.navToggle.addEventListener('click', () => {
-        const expanded = elements.navToggle.getAttribute('aria-expanded') === 'true';
-        elements.navToggle.setAttribute('aria-expanded', (!expanded).toString());
-        
+      const { navToggle, navLinks, navIcon } = elements;
+      navToggle.addEventListener('click', () => {
+        const expanded = navToggle.getAttribute('aria-expanded') === 'true';
+        navToggle.setAttribute('aria-expanded', (!expanded).toString());
+
         if (expanded) {
-          elements.navLinks.classList.remove('expanded');
-          elements.navLinks.classList.add('hidden');
-          elements.navLinks.style.maxHeight = '0';
-          elements.navIcon.classList.remove('rotate-180');
+          navLinks.classList.remove('expanded');
+          navLinks.classList.add('hidden');
+          navLinks.style.maxHeight = '0';
+          navIcon.classList.remove('rotate-180');
         } else {
-          elements.navLinks.classList.add('expanded');
-          elements.navLinks.classList.remove('hidden');
-          elements.navLinks.style.maxHeight = elements.navLinks.scrollHeight + 'px';
-          elements.navIcon.classList.add('rotate-180');
+          navLinks.classList.add('expanded');
+          navLinks.classList.remove('hidden');
+          navLinks.style.maxHeight = navLinks.scrollHeight + 'px';
+          navIcon.classList.add('rotate-180');
         }
       });
-      
+
       // Close menu on Escape key
-      elements.navLinks.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && window.innerWidth < 768 && elements.navToggle && elements.navLinks && elements.navIcon) {
-          elements.navToggle.setAttribute('aria-expanded', 'false');
-          elements.navLinks.classList.add('hidden');
-          elements.navIcon.classList.remove('rotate-180');
-          elements.navToggle.focus();
+      navLinks.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && window.innerWidth < 768) {
+          navToggle.setAttribute('aria-expanded', 'false');
+          navLinks.classList.add('hidden');
+          navIcon.classList.remove('rotate-180');
+          navToggle.focus();
         }
       });
     }
@@ -315,7 +316,7 @@ const getShortLabel = (contact) => {
             }
             
             // Update URL hash without scrolling
-            history.replaceState(null, null, `#${targetId}`);
+            history.replaceState(null, "", `#${targetId}`);
           }
         }
       });
@@ -334,7 +335,7 @@ const getShortLabel = (contact) => {
           const id = obsEntry.target.getAttribute('id');
           if (id) {
             // Update URL hash without scrolling
-            history.replaceState(null, null, `#${id}`);
+            history.replaceState(null, "", `#${id}`);
             
             // Update active nav link
             document.querySelectorAll('.section-link').forEach(link => {

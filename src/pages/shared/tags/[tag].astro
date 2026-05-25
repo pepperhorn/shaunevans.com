@@ -28,7 +28,7 @@ const { posts } = Astro.props;
 // Resolve images for all posts
 const postsWithResolvedImages = await Promise.all(
   posts.map(async (post) => {
-    let resolvedImage = null;
+    let resolvedImage: ImageMetadata | string | null = null;
     if (post.data?.image?.src) {
       const imageSrc = post.data.image.src;
       // Check if it's a local image (not an external URL)
