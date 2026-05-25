@@ -14,15 +14,18 @@ RUN pnpm run build
 # Runtime stage
 FROM node:22-alpine AS runner
 
+RUN npm install -g pnpm
+
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=4321
 
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --prod --frozen-lockfile
+
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
 
 EXPOSE 4321
 
