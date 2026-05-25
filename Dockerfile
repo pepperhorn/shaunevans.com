@@ -1,41 +1,29 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
-# Install pnpm
 RUN npm install -g pnpm
 
 WORKDIR /app
 
-# Copy package files
 COPY package.json pnpm-lock.yaml ./
-
-# Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Copy source files
 COPY . .
-
-# Build the Astro site
 RUN pnpm run build
 
-# Production stage
-FROM caddy:2.9.1-alpine
+# Runtime stage
+FROM node:22-alpine AS runner
 
-# Set the working directory
-WORKDIR /usr/share/caddy
+WORKDIR /app
 
-# Copy the built Astro site from builder stage
-COPY --from=builder /app/dist .
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=4321
 
-# Copy the Caddyfile
-COPY Caddyfile /etc/caddy/Caddyfile
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
 
-# Ensure correct permissions (using root, which is the default user in this image)
-RUN chown -R root:root /usr/share/caddy && \
-	chmod -R 755 /usr/share/caddy
+EXPOSE 4321
 
-# Expose port 80
-EXPOSE 80
-
-# Start Caddy
-CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+CMD ["node", "./dist/server/entry.mjs"]
