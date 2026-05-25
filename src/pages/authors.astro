@@ -11,7 +11,7 @@ const allAuthors = await getCollection("authors");
 // Resolve images for all posts
 const postsWithResolvedImages = await Promise.all(
   allAuthors.map(async (post) => {
-    let resolvedImage = null;
+    let resolvedImage: ImageMetadata | string | null = null;
     if (post.data?.image?.src) {
       const imageSrc = post.data.image.src;
       // Check if it's a local image (not an external URL)

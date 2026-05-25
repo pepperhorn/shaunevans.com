@@ -1,9 +1,14 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import GetRandomImage from "../components/getRandomImage.astro";
-import { getCollection } from "astro:content";
+import { getCollection, type CollectionKey } from "astro:content";
 import { getImage } from "astro:assets";
 import { resolveImage, isExternalImage } from "../utils/imageMap";
+
+interface Props {
+  directory: CollectionKey;
+  title: string;
+}
 
 const { directory, title } = Astro.props;
 const allContent = await getCollection(directory);

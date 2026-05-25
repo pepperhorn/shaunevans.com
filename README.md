@@ -1,6 +1,6 @@
 <p>
   <img alt="Version" src="https://img.shields.io/badge/version-5.8.4-blue.svg?cacheSeconds=2592000" />
-  <img alt="Astro" src="https://img.shields.io/badge/Astro-5.15.9-FF5D01.svg?logo=astro&logoColor=white" />
+  <img alt="Astro" src="https://img.shields.io/badge/Astro-6.3.7-FF5D01.svg?logo=astro&logoColor=white" />
   <img alt="Tailwind CSS" src="https://img.shields.io/badge/Tailwind_CSS-4.1.14-38B2AC.svg?logo=tailwind-css&logoColor=white" />
   <img alt="React" src="https://img.shields.io/badge/React-19.2.0-61DAFB.svg?logo=react&logoColor=white" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.9.3-3178C6.svg?logo=typescript&logoColor=white" />
@@ -16,7 +16,7 @@
 
 ## Overview
 
-Revista is a photography portfolio and blog built on Astro v5.15.9. I created it to showcase various photography collections and writing organized into different categories like long-form, short-form, muses, zeitweilig, and my CV. The project prioritizes speed and visual design while using Astro's content collection API to manage everything efficiently.
+Revista is a photography portfolio and blog built on Astro v6.3.7. I created it to showcase various photography collections and writing organized into different categories like long-form, short-form, muses, zeitweilig, and my CV. The project prioritizes speed and visual design while using Astro's content collection API to manage everything efficiently.
 
 The project supports multiple deployment targets with optimized builds for each platform, including GitHub Pages with proper base path configuration.
 
@@ -612,7 +612,7 @@ I've optimized the site in several ways:
 
 3. **Preloading and Prefetching**: Astro's `prefetch` feature loads linked pages before the user clicks, making navigation feel instant.
 
-4. **Efficient Bundling**: Astro v5.15.9 includes improved bundling and tree-shaking to minimize client-side code, with enhanced hydration strategies and faster component rendering.
+4. **Efficient Bundling**: Astro v6 includes improved bundling and tree-shaking to minimize client-side code, with enhanced hydration strategies and faster component rendering.
 
 5. **Cloudflare CDN**: The site uses Cloudflare's CDN with custom cache headers to serve content from edge locations worldwide.
 
@@ -740,68 +740,40 @@ The project includes Docker support for containerized deployment. For detailed i
 The project's Dockerfile is straightforward:
 
 ```dockerfile
-# Using the lightweight Alpine variant of Caddy for better performance
-FROM caddy:2.8.4-alpine
+# Build stage — installs deps and runs pnpm build
+FROM node:22-alpine AS builder
+RUN npm install -g pnpm
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm run build
 
-# Set the working directory for the site files
-WORKDIR /usr/share/caddy
-
-# Copy the Astro-built static files (from the 'dist' directory after 'bun run build')
-COPY ./dist .
-
-# Copy our custom Caddy configuration
-COPY Caddyfile /etc/caddy/Caddyfile
-
-# Set proper ownership and permissions for security
-RUN chown -R root:root /usr/share/caddy && \
-    chmod -R 755 /usr/share/caddy && \
-    # Create Caddy-specific directories with proper permissions
-    mkdir -p /data/caddy /config/caddy && \
-    chmod 700 /data/caddy /config/caddy
-
-# Expose the HTTP port (HTTPS is handled by Cloudflare in production)
-EXPOSE 80
-
-# Run Caddy with our custom config
-CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+# Runtime stage — prod-only deps + prebuilt dist
+FROM node:22-alpine AS runner
+RUN npm install -g pnpm
+WORKDIR /app
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=4321
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --prod --frozen-lockfile
+COPY --from=builder /app/dist ./dist
+EXPOSE 4321
+CMD ["node", "./dist/server/entry.mjs"]
 ```
 
-My Caddyfile is quite simple, as I'm using Cloudflare as my edge CDN:
-
-```
-# Basic Caddyfile for the Revista site
-:80 {
-    # Enable gzip compression
-    encode gzip
-
-    # Set cache control headers for better performance
-    header /* {
-        # Cache static assets for 1 week
-        Cache-Control "public, max-age=604800, must-revalidate"
-        # Security headers
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "strict-origin-when-cross-origin"
-    }
-
-    # Special cache settings for images
-    header /assets/* {
-        Cache-Control "public, max-age=2592000, must-revalidate"
-    }
-
-    # Serve the static site from the container's working directory
-    root * /usr/share/caddy
-    file_server
-}
-```
+The Astro 6 upgrade switched the runtime from Caddy (static file server) to
+`@astrojs/node` in standalone mode. The Node server handles SSR routes directly
+while still pre-rendering all static pages at build time. Cloudflare sits in
+front and handles SSL and CDN caching.
 
 This setup:
 
-1. Uses Caddy as the web server on Alpine Linux for a small footprint
-2. Sets up proper permissions for security
-3. Configures caching and security headers
-4. Exposes port 80 (Cloudflare handles the HTTPS in production)
+1. Uses a two-stage build: builder installs all deps and builds; runner installs prod-only deps (~86 MB smaller image)
+2. Node 22 Alpine keeps the footprint small
+3. Port 4321 is the default Astro Node server port (set `PORT` env var to override)
+4. Cloudflare handles HTTPS and caching in production
 
 ## Security Measures
 
@@ -838,7 +810,7 @@ To start working with this project:
    ```
 
    This installs:
-   - Astro v5.15.9
+   - Astro v6.3.7
    - Tailwind CSS v4.1.14
    - React v19.2.0
    - MDX v4.3.11 and other dependencies

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__032cee79-7102-4d34-a273-8f26c96fc85a__system-prompt",
+      "mcp__69482be8-5753-49c0-a38c-4e340aa4e6e7__system-prompt",
+      "mcp__aa0ee45a-313c-4b31-a308-6c4636612c10__system-prompt",
+      "mcp__c562acaa-fe29-4ae0-a3d9-61cd558f506c__system-prompt"
+    ]
+  }
+}
