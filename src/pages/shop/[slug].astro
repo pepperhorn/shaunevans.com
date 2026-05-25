@@ -1,0 +1,122 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import AddToCartButton from "../../components/shop/AddToCartButton.tsx";
+import ProductCard from "../../components/shop/ProductCard.tsx";
+import { Badge } from "../../components/ui/badge.tsx";
+import { Separator } from "../../components/ui/separator.tsx";
+import { getProducts } from "@/lib/catalog";
+
+export async function getStaticPaths() {
+  const { getProducts } = await import("@/lib/catalog");
+  return getProducts().map((product) => ({
+    params: { slug: product.slug },
+    props: { product },
+  }));
+}
+
+const { product } = Astro.props;
+const allProducts = getProducts();
+const related = allProducts
+  .filter((p) => p.category === product.category && p.id !== product.id)
+  .slice(0, 4);
+
+const categoryLabel: Record<string, string> = {
+  "sheet-music": "Sheet Music",
+  recordings: "Recordings",
+  merch: "Merch",
+  courses: "Courses",
+};
+
+const pageTitle = `${product.name} | ShaunEvans.com Shop`;
+---
+
+<BaseLayout
+  title={pageTitle}
+  description={product.tagline}
+  site_name="ShaunEvans.com"
+>
+  <div class="mx-auto w-full max-w-6xl px-6 py-10 max-sm:px-4">
+    <nav class="mb-6 text-sm text-gray-500 dark:text-gray-400">
+      <a href="/shop/" class="hover:underline">Shop</a>
+      <span class="mx-2">/</span>
+      <a
+        href={`/shop/#${product.category}`}
+        class="hover:underline"
+      >
+        {categoryLabel[product.category]}
+      </a>
+    </nav>
+
+    <div class="grid gap-10 lg:grid-cols-2">
+      <div class="overflow-hidden rounded-lg bg-muted">
+        <img
+          src={product.image}
+          alt={product.name}
+          class="aspect-square w-full object-cover"
+        />
+      </div>
+
+      <div class="space-y-6">
+        <div class="space-y-3">
+          <div class="flex items-center gap-2">
+            <Badge variant="outline">{categoryLabel[product.category]}</Badge>
+            {product.featured && <Badge>Featured</Badge>}
+          </div>
+          <h1
+            class="font-overpass-mono text-3xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)] sm:text-4xl"
+          >
+            {product.name}
+          </h1>
+          <p class="text-lg text-gray-700 dark:text-gray-300">
+            {product.tagline}
+          </p>
+        </div>
+
+        <Separator />
+
+        <div class="flex items-baseline gap-3">
+          <span
+            class="text-4xl font-bold tabular-nums text-gray-900 dark:text-[rgb(245,245,245)]"
+          >
+            ${product.price}
+          </span>
+          <span class="text-sm text-gray-500 dark:text-gray-400">USD</span>
+        </div>
+
+        <p class="text-base leading-relaxed text-gray-700 dark:text-gray-300">
+          {product.description}
+        </p>
+
+        <div class="flex gap-3">
+          <AddToCartButton
+            item={{
+              id: product.id,
+              slug: product.slug,
+              name: product.name,
+              price: product.price,
+              image: product.image,
+            }}
+            size="lg"
+            label="Add to cart"
+            client:load
+          />
+        </div>
+      </div>
+    </div>
+
+    {
+      related.length > 0 && (
+        <section class="mt-16">
+          <h2 class="mb-4 font-overpass-mono text-xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)]">
+            More in {categoryLabel[product.category]}
+          </h2>
+          <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {related.map((p) => (
+              <ProductCard product={p} client:load />
+            ))}
+          </div>
+        </section>
+      )
+    }
+  </div>
+</BaseLayout>

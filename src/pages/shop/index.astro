@@ -1,0 +1,77 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ProductCard from "../../components/shop/ProductCard.tsx";
+import { Badge } from "../../components/ui/badge.tsx";
+import { getProducts } from "@/lib/catalog";
+
+const products = getProducts();
+const categories = Array.from(new Set(products.map((p) => p.category)));
+const categoryLabel: Record<string, string> = {
+  "sheet-music": "Sheet Music",
+  recordings: "Recordings",
+  merch: "Merch",
+  courses: "Courses",
+};
+
+const pageTitle = "Shop | ShaunEvans.com";
+const description =
+  "Sheet music, recordings, courses, and merch from saxophonist and composer Shaun Evans.";
+---
+
+<BaseLayout
+  title={pageTitle}
+  description={description}
+  site_name="ShaunEvans.com"
+>
+  <div class="mx-auto w-full max-w-7xl px-6 py-10 max-sm:px-4">
+    <header class="mb-10 space-y-4">
+      <Badge variant="outline" className="text-xs">Shop</Badge>
+      <h1
+        class="font-overpass-mono text-4xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)] sm:text-5xl"
+      >
+        Sheet music, records, courses.
+      </h1>
+      <p
+        class="max-w-2xl text-base text-gray-700 dark:text-gray-300 sm:text-lg"
+      >
+        Original scores, recordings, and self-paced courses, plus the occasional
+        signed print. Everything ships from Singapore; digital items download
+        instantly after checkout.
+      </p>
+      <div class="flex flex-wrap gap-2 pt-2">
+        {
+          categories.map((cat) => (
+            <a
+              href={`#${cat}`}
+              class="rounded-full border border-border bg-background px-3 py-1 text-sm hover:bg-muted"
+            >
+              {categoryLabel[cat]}
+            </a>
+          ))
+        }
+      </div>
+    </header>
+
+    {
+      categories.map((cat) => (
+        <section id={cat} class="mb-12 scroll-mt-20">
+          <div class="mb-4 flex items-baseline justify-between">
+            <h2 class="font-overpass-mono text-xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)]">
+              {categoryLabel[cat]}
+            </h2>
+            <span class="text-xs text-gray-500 dark:text-gray-400">
+              {products.filter((p) => p.category === cat).length} items
+            </span>
+          </div>
+          <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {products
+              .filter((p) => p.category === cat)
+              .map((product) => (
+                <ProductCard product={product} client:load />
+              ))}
+          </div>
+        </section>
+      ))
+    }
+  </div>
+</BaseLayout>
