@@ -12,7 +12,7 @@ interface Props {
 
 const { src, alt, width = 800, height, class: className = "" } = Astro.props;
 
-let resolvedSrc = null;
+let resolvedSrc: ImageMetadata | string | null = null;
 try {
   resolvedSrc = resolveImage(src);
 } catch (error) {

@@ -1,100 +1,68 @@
-# Docker Setup for Revista
+# Docker Deployment
 
-## Overview
+This project ships as a multi-stage Docker image built on Node 22 Alpine.
+As of Astro 6, the runtime is [`@astrojs/node`](https://docs.astro.build/en/guides/integrations-guide/node/)
+in **standalone** mode — the Node server serves both SSR routes and
+pre-rendered static assets. Cloudflare sits in front and handles SSL, CDN
+caching, and DDoS protection.
 
-This project provides a containerized deployment option using Docker with Caddy as the web server. The container runs a custom Astro v5.15.9 + Tailwind CSS v4.1.14 build optimized for performance and security.
+## Image overview
 
-## Key Components
+| Stage | Base | Purpose |
+|-------|------|---------|
+| `builder` | `node:22-alpine` | Installs all deps, runs `pnpm build` |
+| `runner` | `node:22-alpine` | Installs prod-only deps, copies `dist/` |
 
-- **Base Image**: Alpine-based Caddy (v2.8.4)
-- **Content**: Pre-built static files from Astro
-- **Configuration**: Custom Caddyfile for optimal performance
-- **Security**: Proper file permissions and security headers
+The two-stage build keeps devDependencies (prettier, pagefind, etc.) out of
+the production image, saving ~86 MB.
 
-## Quick Start
+## Environment variables
 
-```bash
-# Build the container
-docker build -t revista:latest .
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `HOST` | no | Bind address (default `0.0.0.0`) |
+| `PORT` | no | Listen port (default `4321`) |
+| `NODE_ENV` | no | Set to `production` in the image |
+| `DIRECTUS_URL` | no | Directus base URL for build-time data fetch |
+| `DIRECTUS_TOKEN` | no | Read token for products + lessons collections |
+| `PUBLIC_DIRECTUS_URL` | no | Same URL, exposed to browser for form POSTs |
+| `PUBLIC_DIRECTUS_BOOKING_TOKEN` | no | Write-only token for booking_requests |
 
-# Run the container
-docker run -p 8080:80 revista:latest
+Without the Directus vars the site builds from stub data in `src/data/*`.
 
-# Or use docker-compose
-docker-compose up -d
-```
-
-## Port Configuration
-
-The container exposes port 80 by default. For different setups:
-
-- **Standard usage**: Map to any port on your host (e.g., `-p 8080:80`)
-- **Behind reverse proxy**: Can map to port 4321 or any other port
-- **Direct exposure**: Caddy handles serving the static content
-
-## Docker Compose
-
-The project includes a `compose.yaml` file for easy deployment:
-
-```yaml
-version: '3'
-services:
-  revista:
-    build: .
-    ports:
-      - "8080:80"
-    restart: unless-stopped
-    volumes:
-      - caddy_data:/data
-      - caddy_config:/config
-
-volumes:
-  caddy_data:
-  caddy_config:
-```
-
-## Multi-Architecture Support
-
-The project supports multiple CPU architectures. If you encounter issues with multi-platform builds, use these commands:
+## Building locally
 
 ```bash
-# Create a builder instance
-docker buildx create --name mybuilder --use --driver docker-container
-
-# Check the builder's status
-docker buildx inspect --bootstrap
-docker buildx ls
-
-# Build and push for multiple platforms
-docker buildx build \
-  --platform linux/arm64,linux/amd64,linux/arm/v6,linux/arm/v7 \
-  -t [repo]/[image-name]:[tag] . \
-  --push
+docker build -t shaunevans-com .
 ```
 
-## Performance Optimizations
+## Running locally
 
-The Docker setup includes several performance optimizations:
+```bash
+docker run --rm -p 4321:4321 shaunevans-com
+# → http://localhost:4321
+```
 
-1. **Alpine-based image** for minimal size (~40MB)
-2. **Gzip compression** enabled in Caddyfile
-3. **Cache control headers** for optimal browser caching
-4. **Security headers** for enhanced protection
+## CI/CD pipeline
 
-## Customization
+The GitHub Actions workflow (`.github/workflows/deploy.yml`) builds and
+pushes a multi-platform image (`linux/amd64`, `linux/arm64`, `linux/arm/v6`,
+`linux/arm/v7`) to Docker Hub, then signs it with [Cosign](https://docs.sigstore.dev/cosign/overview/).
 
-To customize the Docker setup:
+```
+push to main
+  └─ build-revista       # pnpm build, upload dist artifact
+      ├─ deploy-to-deno
+      ├─ deploy-to-cloudflare
+      ├─ deploy-to-github-pages
+      └─ prepare-docker → build-and-push-docker → inspect → sign
+                                                        └─ purge-cloudflare-cache
+```
 
-1. **Modify the Caddyfile** for different server configurations
-2. **Edit environment variables** in compose.yaml for different settings
-3. **Add volumes** in compose.yaml for persistent storage needs
+## Coolify deployment
 
-## Troubleshooting
+The production site runs on [Coolify](https://coolify.io). Point Coolify at
+this repository; it will pick up the `Dockerfile` automatically. Set the
+environment variables listed above in the Coolify project settings.
 
-Common issues and solutions:
-
-- **Permission errors**: Container runs as a non-root user; ensure proper file permissions
-- **Port conflicts**: Change the host port mapping if 8080 is already in use
-- **Build failures**: Ensure Docker buildx is properly set up for multi-architecture builds
-
-For more detailed information on Docker deployment, refer to the main [README.md](README.md#docker-setup) file.
+See `.env.example` in the repo root for the full list with descriptions.

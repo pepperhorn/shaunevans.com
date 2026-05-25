@@ -10,6 +10,7 @@ import undiciRetry from "./src/scripts/undici-retry.js";
 import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
+import node from "@astrojs/node";
 // https://astro.build/config
 export default defineConfig({
   site: process.env.GITHUB_PAGES === 'true' ? "https://pepperhorn.github.io" : "https://shaunevans.com",
@@ -74,31 +75,26 @@ export default defineConfig({
     defaultStrategy: "viewport",
   },
 
-  experimental: {
-    clientPrerender: true,
-    fonts: [
-      {
-        provider: fontProviders.fontsource(),
-        name: "Inconsolata",
-        cssVariable: "--font-inconsolata",
-        display: "swap",
-        fallbacks: ["monospace"],
-        weights: [200, 400, 700, 900],
-        optimizedFallbacks: true,
-      },
-      {
-        provider: fontProviders.fontsource(),
-        name: "Overpass Mono",
-        cssVariable: "--font-overpass-mono",
-        display: "swap",
-        fallbacks: ["monospace"],
-        weights: [300, 400, 700],
-        optimizedFallbacks: true,
-      },
-    ],
-    // responsiveImages: true,
-    // directRenderScript: true
-  },
+  fonts: [
+    {
+      provider: fontProviders.fontsource(),
+      name: "Inconsolata",
+      cssVariable: "--font-inconsolata",
+      display: "swap",
+      fallbacks: ["monospace"],
+      weights: [200, 400, 700, 900],
+      optimizedFallbacks: true,
+    },
+    {
+      provider: fontProviders.fontsource(),
+      name: "Overpass Mono",
+      cssVariable: "--font-overpass-mono",
+      display: "swap",
+      fallbacks: ["monospace"],
+      weights: [300, 400, 700],
+      optimizedFallbacks: true,
+    },
+  ],
 
   build: {
     concurrency: 2, // Reduced from 4 to reduce memory pressure during image optimization
@@ -127,4 +123,8 @@ export default defineConfig({
   devToolbar: {
     enabled: false,
   },
+
+  adapter: node({
+    mode: "standalone",
+  }),
 });
