@@ -8,14 +8,15 @@ import { getProducts } from "@/lib/catalog";
 
 export async function getStaticPaths() {
   const { getProducts } = await import("@/lib/catalog");
-  return getProducts().map((product) => ({
+  const products = await getProducts();
+  return products.map((product) => ({
     params: { slug: product.slug },
     props: { product },
   }));
 }
 
 const { product } = Astro.props;
-const allProducts = getProducts();
+const allProducts = await getProducts();
 const related = allProducts
   .filter((p) => p.category === product.category && p.id !== product.id)
   .slice(0, 4);
@@ -39,10 +40,7 @@ const pageTitle = `${product.name} | ShaunEvans.com Shop`;
     <nav class="mb-6 text-sm text-gray-500 dark:text-gray-400">
       <a href="/shop/" class="hover:underline">Shop</a>
       <span class="mx-2">/</span>
-      <a
-        href={`/shop/#${product.category}`}
-        class="hover:underline"
-      >
+      <a href={`/shop/#${product.category}`} class="hover:underline">
         {categoryLabel[product.category]}
       </a>
     </nav>
@@ -87,19 +85,32 @@ const pageTitle = `${product.name} | ShaunEvans.com Shop`;
           {product.description}
         </p>
 
-        <div class="flex gap-3">
-          <AddToCartButton
-            item={{
-              id: product.id,
-              slug: product.slug,
-              name: product.name,
-              price: product.price,
-              image: product.image,
-            }}
-            size="lg"
-            label="Add to cart"
-            client:load
-          />
+        <div class="flex flex-wrap gap-3">
+          {
+            product.square_checkout_link ? (
+              <a
+                href={product.square_checkout_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex h-11 items-center justify-center rounded-md bg-foreground px-6 text-sm font-medium text-background shadow-sm transition-colors hover:bg-foreground/90"
+              >
+                Buy now via Square ↗
+              </a>
+            ) : (
+              <AddToCartButton
+                item={{
+                  id: product.id,
+                  slug: product.slug,
+                  name: product.name,
+                  price: product.price,
+                  image: product.image,
+                }}
+                size="lg"
+                label="Add to cart"
+                client:load
+              />
+            )
+          }
         </div>
       </div>
     </div>

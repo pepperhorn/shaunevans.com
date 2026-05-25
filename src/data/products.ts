@@ -8,6 +8,7 @@ export type Product = {
   description: string;
   image: string;
   featured?: boolean;
+  square_checkout_link?: string;
 };
 
 export const products: Product[] = [

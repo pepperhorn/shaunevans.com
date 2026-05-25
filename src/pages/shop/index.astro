@@ -4,7 +4,7 @@ import ProductCard from "../../components/shop/ProductCard.tsx";
 import { Badge } from "../../components/ui/badge.tsx";
 import { getProducts } from "@/lib/catalog";
 
-const products = getProducts();
+const products = await getProducts();
 const categories = Array.from(new Set(products.map((p) => p.category)));
 const categoryLabel: Record<string, string> = {
   "sheet-music": "Sheet Music",

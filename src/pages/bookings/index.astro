@@ -5,7 +5,7 @@ import BookingForm from "../../components/bookings/BookingForm.tsx";
 import { Badge } from "../../components/ui/badge.tsx";
 import { getLessons } from "@/lib/catalog";
 
-const lessons = getLessons();
+const lessons = await getLessons();
 
 const pageTitle = "Bookings & Lessons | ShaunEvans.com";
 const description =
