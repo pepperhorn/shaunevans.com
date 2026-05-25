@@ -4,25 +4,76 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Check } from "lucide-react";
+import { Check, AlertCircle } from "lucide-react";
 import type { Lesson } from "@/data/lessons";
 
 type Props = {
   lessons: Lesson[];
 };
 
+// Injected at build time (PUBLIC_ prefix = available in browser bundle).
+// Set PUBLIC_DIRECTUS_URL in your deploy environment to enable live submissions.
+// Optionally set PUBLIC_DIRECTUS_BOOKING_TOKEN to a write-only token if you
+// don't want to enable public-role create access on booking_requests.
+const DIRECTUS_URL = import.meta.env.PUBLIC_DIRECTUS_URL as string | undefined;
+const BOOKING_TOKEN = import.meta.env.PUBLIC_DIRECTUS_BOOKING_TOKEN as
+  | string
+  | undefined;
+
+async function submitToDirectus(data: Record<string, string>): Promise<void> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (BOOKING_TOKEN) {
+    headers["Authorization"] = `Bearer ${BOOKING_TOKEN}`;
+  }
+  const res = await fetch(`${DIRECTUS_URL}/items/booking_requests`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      name: data.name,
+      email: data.email,
+      package_slug: data.package,
+      instrument: data.instrument || null,
+      experience_level: data.experience,
+      notes: data.notes || null,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Submission failed (${res.status}): ${text}`);
+  }
+}
+
 export default function BookingForm({ lessons }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
-    // TODO: POST to se-cms once the bookings collection lands.
-    window.setTimeout(() => {
-      setSubmitting(false);
+    setError(null);
+
+    const fd = new FormData(event.currentTarget);
+    const data = Object.fromEntries(fd.entries()) as Record<string, string>;
+
+    try {
+      if (DIRECTUS_URL) {
+        await submitToDirectus(data);
+      } else {
+        // No CMS configured — simulate for local dev / preview.
+        await new Promise((r) => setTimeout(r, 700));
+      }
       setSubmitted(true);
-    }, 700);
+    } catch (err) {
+      console.error("[BookingForm] submission error:", err);
+      setError(
+        "Something went wrong submitting your request. Please try emailing directly at shaun@shaunevans.com.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (submitted) {
@@ -132,8 +183,15 @@ export default function BookingForm({ lessons }: Props) {
             />
           </div>
 
+          {error && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <Button type="submit" disabled={submitting} className="w-full">
-            {submitting ? "Submitting..." : "Request booking"}
+            {submitting ? "Submitting…" : "Request booking"}
           </Button>
         </form>
       </CardContent>
