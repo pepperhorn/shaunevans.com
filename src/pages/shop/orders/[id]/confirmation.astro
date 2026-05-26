@@ -1,22 +1,13 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
-import { verifySessionToken } from "@/lib/session";
 import { getOrderForUser } from "@/lib/orders";
 
 export const prerender = false;
 
 const orderId = Astro.params.id!;
-const tokenCookie = Astro.request.headers.get("cookie") ?? "";
-// Browser sends session via query string fallback for redirects from Square,
-// since the redirect lands without a cookie. The client also reads from localStorage
-// and re-renders status via the script below.
-const session = verifySessionToken(Astro.url.searchParams.get("t") ?? "");
+const sessUser = await Astro.session?.get<{ id: number; email: string; name: string | null }>("user");
 
-let order = null;
-if (session) {
-  order = await getOrderForUser(orderId, session.user_id);
-}
-
+const order = sessUser ? await getOrderForUser(orderId, sessUser.id) : null;
 const title = order ? `Order ${order.id.slice(0, 8)}` : "Order confirmation";
 ---
 
@@ -25,7 +16,23 @@ const title = order ? `Order ${order.id.slice(0, 8)}` : "Order confirmation";
     <h1 class="font-overpass-mono text-3xl uppercase mb-4">Thanks for your order</h1>
 
     {
-      order ? (
+      !sessUser ? (
+        <p class="text-sm text-slate-500">
+          Your session has expired.{" "}
+          <a href="/account" class="underline">
+            Sign in
+          </a>{" "}
+          to view this order.
+        </p>
+      ) : !order ? (
+        <p class="text-sm text-slate-500">
+          We couldn't find that order on your account.{" "}
+          <a href="/account" class="underline">
+            See all orders
+          </a>
+          .
+        </p>
+      ) : (
         <section class="order-summary">
           <p class="order-status text-sm text-slate-500 mb-2">
             Status: <strong>{order.status}</strong>
@@ -38,14 +45,18 @@ const title = order ? `Order ${order.id.slice(0, 8)}` : "Order confirmation";
                 <span>
                   {line.quantity}× {line.name}
                 </span>
-                <span class="tabular-nums">{line.line_total} {order.currency}</span>
+                <span class="tabular-nums">
+                  {line.line_total} {order.currency}
+                </span>
               </li>
             ))}
           </ul>
 
           <div class="order-total flex justify-between text-base font-semibold">
             <span>Total</span>
-            <span class="tabular-nums">{order.total} {order.currency}</span>
+            <span class="tabular-nums">
+              {order.total} {order.currency}
+            </span>
           </div>
 
           <p class="text-sm text-slate-500 mt-6">
@@ -53,27 +64,7 @@ const title = order ? `Order ${order.id.slice(0, 8)}` : "Order confirmation";
             confirms it. We'll email your downloads to <strong>{order.email}</strong>.
           </p>
         </section>
-      ) : (
-        <p class="order-pending text-sm text-slate-500" id="confirmation-pending">
-          Looking up your order…
-        </p>
       )
     }
   </main>
-
-  <script is:inline define:vars={{ orderId, hasOrder: Boolean(order) }}>
-    if (!hasOrder) {
-      const raw = localStorage.getItem("se:session");
-      if (raw) {
-        try {
-          const sess = JSON.parse(raw);
-          if (sess && sess.token) {
-            const u = new URL(window.location.href);
-            u.searchParams.set("t", sess.token);
-            window.location.replace(u.toString());
-          }
-        } catch {}
-      }
-    }
-  </script>
 </BaseLayout>

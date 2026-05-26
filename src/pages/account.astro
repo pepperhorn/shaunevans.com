@@ -2,29 +2,27 @@
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import CmsPageRenderer from "@/components/CmsPageRenderer.astro";
 import AccountAuthGate from "@/components/shop/AccountAuthGate";
-import { verifySessionToken } from "@/lib/session";
 import { getOrdersForUser } from "@/lib/orders";
 import { getBookingsForEmail } from "@/lib/bookings";
 import { fetchPageByPermalink } from "@/lib/directus";
 
 export const prerender = false;
 
-const token = Astro.url.searchParams.get("t") ?? "";
-const sess = token ? verifySessionToken(token) : null;
+const sessUser = await Astro.session?.get<{ id: number; email: string; name: string | null }>("user");
 
 let orders: Awaited<ReturnType<typeof getOrdersForUser>> = [];
 let bookings: Awaited<ReturnType<typeof getBookingsForEmail>> = [];
 let cmsPage: Awaited<ReturnType<typeof fetchPageByPermalink>> = null;
 
-if (sess) {
+if (sessUser) {
   [orders, bookings, cmsPage] = await Promise.all([
-    getOrdersForUser(sess.user_id).catch(() => []),
-    getBookingsForEmail(sess.email).catch(() => []),
+    getOrdersForUser(sessUser.id).catch(() => []),
+    getBookingsForEmail(sessUser.email).catch(() => []),
     fetchPageByPermalink("/account").catch(() => null),
   ]);
 }
 
-const title = sess ? `Account — ${sess.email}` : "Account";
+const title = sessUser ? `Account — ${sessUser.email}` : "Account";
 
 function fmtDate(s: string | null | undefined): string {
   if (!s) return "";
@@ -65,9 +63,9 @@ function statusColor(status: string): string {
       <div>
         <h1 class="font-overpass-mono text-3xl uppercase">Your account</h1>
         {
-          sess && (
+          sessUser && (
             <p class="text-sm text-muted-foreground mt-1">
-              Signed in as <strong>{sess.email}</strong>
+              Signed in as <strong>{sessUser.email}</strong>
             </p>
           )
         }
@@ -76,7 +74,7 @@ function statusColor(status: string): string {
     </header>
 
     {
-      !sess ? (
+      !sessUser ? (
         <section class="account-signin">
           <AccountAuthGate mode="gate" client:load />
         </section>

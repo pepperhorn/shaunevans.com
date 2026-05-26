@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useStore } from "@nanostores/react";
 import { Button } from "@/components/ui/button";
-import { session, clearSession } from "@/lib/sessionClient";
+import { sessionState, signOut } from "@/lib/sessionClient";
 import AuthOverlay from "./AuthOverlay";
 
 type Props = {
@@ -9,28 +9,16 @@ type Props = {
 };
 
 export default function AccountAuthGate({ mode }: Props) {
-  const sess = useStore(session);
+  const sess = useStore(sessionState);
   const [authOpen, setAuthOpen] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    setHydrated(true);
-    if (mode === "gate" && sess?.token) {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("t") !== sess.token) {
-        params.set("t", sess.token);
-        window.location.replace(`${window.location.pathname}?${params.toString()}`);
-      }
-    }
-  }, [sess, mode]);
 
   if (mode === "signout") {
-    if (!sess) return null;
+    if (sess.status !== "authenticated") return null;
     return (
       <button
         type="button"
-        onClick={() => {
-          clearSession();
+        onClick={async () => {
+          await signOut();
           window.location.href = "/account";
         }}
         className="btn-signout text-xs text-muted-foreground hover:underline"
@@ -40,8 +28,12 @@ export default function AccountAuthGate({ mode }: Props) {
     );
   }
 
-  if (!hydrated) return null;
-  if (sess) return null;
+  if (sess.status === "loading") {
+    return <p className="text-sm text-muted-foreground">Checking your session…</p>;
+  }
+  if (sess.status === "authenticated") {
+    return null;
+  }
 
   return (
     <div className="account-gate flex flex-col items-start gap-3">

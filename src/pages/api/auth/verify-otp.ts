@@ -1,10 +1,9 @@
 import type { APIRoute } from "astro";
 import { verifyOtp } from "@/lib/auth";
-import { issueSessionToken } from "@/lib/session";
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, session }) => {
   try {
     const body = (await request.json()) as { email?: string; code?: string };
     const email = (body.email ?? "").trim().toLowerCase();
@@ -22,9 +21,21 @@ export const POST: APIRoute = async ({ request }) => {
         headers: { "Content-Type": "application/json" },
       });
     }
-    const token = issueSessionToken({ user_id: user.id, email: user.email });
+
+    if (!session) {
+      return new Response(JSON.stringify({ error: "sessions not enabled" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    await session.regenerate();
+    await session.set("user", { id: user.id, email: user.email, name: user.name });
+
     return new Response(
-      JSON.stringify({ ok: true, token, user: { id: user.id, email: user.email, name: user.name } }),
+      JSON.stringify({
+        ok: true,
+        user: { user_id: user.id, email: user.email, name: user.name },
+      }),
       { headers: { "Content-Type": "application/json" } },
     );
   } catch (err) {

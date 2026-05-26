@@ -2,26 +2,26 @@ import { useState } from "react";
 import { useStore } from "@nanostores/react";
 import { Button } from "@/components/ui/button";
 import { cart } from "@/lib/cart";
-import { session } from "@/lib/sessionClient";
+import { sessionState } from "@/lib/sessionClient";
 import AuthOverlay from "./AuthOverlay";
 
 export default function CheckoutButton() {
   const items = useStore(cart);
-  const sess = useStore(session);
+  const sess = useStore(sessionState);
   const [authOpen, setAuthOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function proceedToPayment() {
-    if (!sess || items.length === 0) return;
+    if (items.length === 0) return;
     setError(null);
     setBusy(true);
     try {
       const res = await fetch("/api/checkout", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token: sess.token,
           currency: "GBP",
           items: items.map((i) => ({ product_id: i.id, quantity: i.quantity })),
         }),
@@ -42,27 +42,34 @@ export default function CheckoutButton() {
   }
 
   function handleClick() {
-    if (!sess) {
+    if (sess.status !== "authenticated") {
       setAuthOpen(true);
       return;
     }
     void proceedToPayment();
   }
 
+  const isAuthed = sess.status === "authenticated";
+  const isLoading = sess.status === "loading";
+
   return (
     <>
       <div className="checkout-button-group flex w-full flex-col gap-2">
         <Button
           onClick={handleClick}
-          disabled={busy || items.length === 0}
+          disabled={busy || isLoading || items.length === 0}
           className="btn-checkout w-full"
         >
-          {busy ? "Redirecting to payment…" : sess ? "Checkout" : "Sign in to checkout"}
+          {busy
+            ? "Redirecting to payment…"
+            : isAuthed
+              ? "Checkout"
+              : "Sign in to checkout"}
         </Button>
         {error && <p className="checkout-error text-xs text-red-600">{error}</p>}
-        {sess && (
+        {isAuthed && (
           <p className="checkout-signed-in text-xs text-muted-foreground">
-            Signed in as {sess.email}
+            Signed in as {sess.user.email}
           </p>
         )}
       </div>

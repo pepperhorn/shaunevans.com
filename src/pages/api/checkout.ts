@@ -1,5 +1,4 @@
 import type { APIRoute } from "astro";
-import { verifySessionToken } from "@/lib/session";
 import { getProduct } from "@/lib/catalog";
 import { createOrder, attachPaymentSession } from "@/lib/orders";
 import { getPaymentProvider } from "@/lib/payments";
@@ -7,22 +6,21 @@ import { getPaymentProvider } from "@/lib/payments";
 export const prerender = false;
 
 type CheckoutRequest = {
-  token: string;
   items: Array<{ product_id: string; quantity: number }>;
   currency?: string;
 };
 
-export const POST: APIRoute = async ({ request, url }) => {
+export const POST: APIRoute = async ({ request, session, url }) => {
   try {
-    const body = (await request.json()) as CheckoutRequest;
-    const session = verifySessionToken(body.token);
-    if (!session) {
+    const sessUser = await session?.get<{ id: number; email: string; name: string | null }>("user");
+    if (!sessUser) {
       return new Response(JSON.stringify({ error: "auth required" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },
       });
     }
 
+    const body = (await request.json()) as CheckoutRequest;
     if (!Array.isArray(body.items) || body.items.length === 0) {
       return new Response(JSON.stringify({ error: "empty cart" }), {
         status: 400,
@@ -47,8 +45,8 @@ export const POST: APIRoute = async ({ request, url }) => {
     );
 
     const order = await createOrder({
-      user_id: session.user_id,
-      email: session.email,
+      user_id: sessUser.id,
+      email: sessUser.email,
       currency,
       lines: resolved,
     });
@@ -56,7 +54,7 @@ export const POST: APIRoute = async ({ request, url }) => {
     const provider = getPaymentProvider();
     const link = await provider.createPaymentLink({
       order_id: order.id,
-      email: session.email,
+      email: sessUser.email,
       currency,
       line_items: resolved.map((l) => ({
         name: l.name,

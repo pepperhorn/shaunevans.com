@@ -8,7 +8,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { setSession } from "@/lib/sessionClient";
+import { setSessionUser, type ClientSession } from "@/lib/sessionClient";
 
 type Props = {
   open: boolean;
@@ -70,24 +70,19 @@ export default function AuthOverlay({ open, onOpenChange, onAuthenticated, initi
     try {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase(), code: code.trim() }),
       });
       const j = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
-        token?: string;
-        user?: { id: number; email: string; name: string | null };
+        user?: NonNullable<ClientSession>;
         error?: string;
       };
-      if (!res.ok || !j.ok || !j.token || !j.user) {
+      if (!res.ok || !j.ok || !j.user) {
         throw new Error(j.error ?? "Invalid code");
       }
-      setSession({
-        token: j.token,
-        user_id: j.user.id,
-        email: j.user.email,
-        name: j.user.name,
-      });
+      setSessionUser(j.user);
       onAuthenticated?.();
       onOpenChange(false);
     } catch (err) {
