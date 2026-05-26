@@ -18,6 +18,7 @@ import {
   updateQuantity,
   type CartItem,
 } from "@/lib/cart";
+import CheckoutButton from "./CheckoutButton";
 
 function formatPrice(value: number) {
   return value.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -135,11 +136,9 @@ export default function CartSheet() {
             </div>
             <Separator />
             <p className="text-xs text-muted-foreground">
-              Shipping and taxes calculated at checkout.
+              Digital goods — delivered by email after payment.
             </p>
-            <Button className="w-full" disabled>
-              Checkout (coming soon)
-            </Button>
+            <CheckoutButton />
           </SheetFooter>
         )}
       </SheetContent>
