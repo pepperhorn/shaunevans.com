@@ -153,6 +153,7 @@ export async function markOrderPaid(
 }
 
 export type OrderWithItems = Order & {
+  date_created?: string | null;
   items: Array<{
     id: string;
     name: string;
@@ -162,6 +163,16 @@ export type OrderWithItems = Order & {
     line_total: string;
   }>;
 };
+
+export async function getOrdersForUser(userId: number): Promise<OrderWithItems[]> {
+  return await directusGet<OrderWithItems[]>("/items/orders", {
+    "filter[user][_eq]": String(userId),
+    "fields[]":
+      "id,status,user,email,currency,subtotal,tax,total,payment_provider,payment_session_id,payment_intent_id,paid_at,delivered_at,date_created,items.id,items.name,items.slug,items.quantity,items.unit_price,items.line_total",
+    "sort[]": "-date_created",
+    limit: "100",
+  });
+}
 
 export async function getOrderForUser(
   orderId: string,
