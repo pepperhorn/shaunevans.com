@@ -1,0 +1,72 @@
+---
+import type { CmsBlock } from "@/lib/directus";
+
+interface Props {
+  blocks: CmsBlock[];
+}
+
+const { blocks } = Astro.props;
+
+// Helpers to safely read fields off the generic `item` payload.
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
+const bool = (v: unknown): boolean => Boolean(v);
+---
+
+<div class="cms-page">
+  {
+    blocks.map((b) => {
+      const bg = b.background ?? null;
+      const wrapperClasses = [
+        "cms-block",
+        `cms-block-${b.collection}`,
+        bg === "dark" ? "cms-bg-dark" : bg === "light" ? "cms-bg-light" : "",
+      ].filter(Boolean).join(" ");
+
+      if (b.collection === "block_richtext") {
+        const headline = str(b.item.headline);
+        const tagline = str(b.item.tagline);
+        const content = str(b.item.content);
+        const alignment = str(b.item.alignment) || "left";
+        const width = str(b.item.width) || "tight";
+        const hasBackground = bool(b.item.background);
+        const containerClass = [
+          "mx-auto px-4 py-8",
+          width === "tight" ? "max-w-3xl" : "max-w-6xl",
+          alignment === "center" ? "text-center" : "text-left",
+          hasBackground ? "bg-slate-100 dark:bg-[rgb(40,39,43)] rounded-lg my-6" : "",
+        ].filter(Boolean).join(" ");
+        return (
+          <section class={wrapperClasses}>
+            <div class={containerClass}>
+              {tagline && (
+                <p class="cms-tagline font-overpass-mono uppercase text-sm text-gray-500 dark:text-gray-400 mb-2">
+                  {tagline}
+                </p>
+              )}
+              {headline && (
+                <h2 class="cms-headline font-overpass-mono text-3xl sm:text-4xl mb-4">
+                  {headline}
+                </h2>
+              )}
+              {content && (
+                <div
+                  class="cms-richtext prose dark:prose-invert max-w-none"
+                  set:html={content}
+                />
+              )}
+            </div>
+          </section>
+        );
+      }
+
+      // Unknown block type — render a debug placeholder so editors can spot it.
+      return (
+        <section class={wrapperClasses}>
+          <div class="mx-auto max-w-3xl px-4 py-4 text-xs text-gray-500 italic">
+            [Unsupported block: {b.collection}]
+          </div>
+        </section>
+      );
+    })
+  }
+</div>

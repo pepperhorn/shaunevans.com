@@ -116,3 +116,195 @@ export async function fetchLessons(): Promise<Lesson[]> {
     popular: l.popular ?? false,
   }));
 }
+
+// ── Posts ─────────────────────────────────────────────────────────────────
+
+export type CmsPost = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  content: string;
+  image: string | null;
+  imageUrl: string | null;
+  authorName: string;
+  publishedAt: string;
+  tags: { name: string; slug: string }[];
+};
+
+type RawPost = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  content: string | null;
+  image: string | null;
+  published_at: string | null;
+  date_created: string | null;
+  author: { first_name?: string; last_name?: string; email?: string } | string | null;
+  post_tags: Array<{ post_tags_id: { id: string; name: string; slug: string } | null }> | null;
+};
+
+function mapPost(p: RawPost): CmsPost {
+  let authorName = "";
+  if (p.author && typeof p.author === "object") {
+    authorName = [p.author.first_name, p.author.last_name].filter(Boolean).join(" ").trim();
+    if (!authorName && p.author.email) authorName = p.author.email;
+  }
+  const tags = (p.post_tags ?? [])
+    .map((j) => j.post_tags_id)
+    .filter((t): t is { id: string; name: string; slug: string } => Boolean(t))
+    .map((t) => ({ name: t.name, slug: t.slug }));
+  return {
+    id: p.id,
+    slug: p.slug,
+    title: p.title,
+    description: p.description ?? "",
+    content: p.content ?? "",
+    image: p.image,
+    imageUrl: p.image && BASE_URL ? `${BASE_URL}/assets/${p.image}` : null,
+    authorName: authorName || "Shaun Evans",
+    publishedAt: p.published_at ?? p.date_created ?? new Date().toISOString(),
+    tags,
+  };
+}
+
+const POST_FIELDS = [
+  "id",
+  "slug",
+  "title",
+  "description",
+  "content",
+  "image",
+  "published_at",
+  "date_created",
+  "author.first_name",
+  "author.last_name",
+  "author.email",
+  "post_tags.post_tags_id.id",
+  "post_tags.post_tags_id.name",
+  "post_tags.post_tags_id.slug",
+].join(",");
+
+export async function fetchPosts(): Promise<CmsPost[]> {
+  const items = await directusFetch<RawPost[]>("/items/posts", {
+    "filter[status][_eq]": "published",
+    "fields[]": POST_FIELDS,
+    "sort[]": "-published_at",
+    limit: "500",
+  });
+  return items.map(mapPost);
+}
+
+export async function fetchPostsByTag(tagSlug: string): Promise<CmsPost[]> {
+  const items = await directusFetch<RawPost[]>("/items/posts", {
+    "filter[status][_eq]": "published",
+    "filter[post_tags][post_tags_id][slug][_eq]": tagSlug,
+    "fields[]": POST_FIELDS,
+    "sort[]": "-published_at",
+    limit: "500",
+  });
+  return items.map(mapPost);
+}
+
+export async function fetchPostBySlug(slug: string): Promise<CmsPost | null> {
+  const items = await directusFetch<RawPost[]>("/items/posts", {
+    "filter[status][_eq]": "published",
+    "filter[slug][_eq]": slug,
+    "fields[]": POST_FIELDS,
+    limit: "1",
+  });
+  return items[0] ? mapPost(items[0]) : null;
+}
+
+// ── Pages ─────────────────────────────────────────────────────────────────
+
+export type CmsBlock = {
+  id: string;
+  collection: string;
+  background: "light" | "dark" | null;
+  hideBlock: boolean;
+  item: Record<string, unknown>;
+};
+
+export type CmsPage = {
+  id: string;
+  title: string;
+  permalink: string;
+  status: string;
+  seo: { title?: string; meta_description?: string } | null;
+  blocks: CmsBlock[];
+};
+
+type RawBlock = {
+  id: string;
+  sort: number | null;
+  collection: string;
+  background: "light" | "dark" | null;
+  hide_block: boolean | null;
+  item: Record<string, unknown> | string;
+};
+
+type RawPage = {
+  id: string;
+  title: string;
+  permalink: string;
+  status: string;
+  seo: { title?: string; meta_description?: string } | null;
+  blocks: RawBlock[] | null;
+};
+
+const PAGE_FIELDS = [
+  "id",
+  "title",
+  "permalink",
+  "status",
+  "seo",
+  "blocks.id",
+  "blocks.sort",
+  "blocks.collection",
+  "blocks.background",
+  "blocks.hide_block",
+  "blocks.item.*",
+].join(",");
+
+function mapPage(p: RawPage): CmsPage {
+  const blocks = (p.blocks ?? [])
+    .slice()
+    .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+    .filter((b) => !b.hide_block)
+    .map((b) => ({
+      id: b.id,
+      collection: b.collection,
+      background: b.background,
+      hideBlock: b.hide_block ?? false,
+      item: typeof b.item === "object" && b.item !== null ? b.item : {},
+    }));
+  return {
+    id: p.id,
+    title: p.title,
+    permalink: p.permalink,
+    status: p.status,
+    seo: p.seo,
+    blocks,
+  };
+}
+
+export async function fetchPageByPermalink(permalink: string): Promise<CmsPage | null> {
+  const items = await directusFetch<RawPage[]>("/items/pages", {
+    "filter[permalink][_eq]": permalink,
+    "fields[]": PAGE_FIELDS,
+    limit: "1",
+  });
+  return items[0] ? mapPage(items[0]) : null;
+}
+
+export async function fetchPages(): Promise<CmsPage[]> {
+  const items = await directusFetch<RawPage[]>("/items/pages", {
+    "filter[status][_eq]": "published",
+    "fields[]": PAGE_FIELDS,
+    "sort[]": "sort,permalink",
+    limit: "200",
+  });
+  return items.map(mapPage);
+}

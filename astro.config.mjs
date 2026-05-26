@@ -20,7 +20,7 @@ export default defineConfig({
     // responsiveStyles: true,
     // layout: "full-width",
     // objectFit: "contain",
-    domains: ["https://shaunevans.com"],
+    domains: ["shaunevans.com", "content.shaunevans.com"],
     service: {
       entrypoint: "astro/assets/services/sharp",
       config: {
