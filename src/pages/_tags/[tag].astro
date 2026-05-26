@@ -1,36 +1,52 @@
 ---
-import { getCollection } from "astro:content";
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import BlogPost from "../../components/BlogPost.astro";
+import CmsBlogPost from "../../components/CmsBlogPost.astro";
+import { getAllPosts } from "@/lib/posts";
 
 export async function getStaticPaths() {
-  const allMuses = await getCollection("shared");
-  const uniqueTags = [
-    ...new Set(allMuses.map((post) => post.data.tags).flat()),
-  ];
-
-  return uniqueTags.map((tag) => {
-    const filteredPosts = allMuses.filter((post) =>
-      post.data.tags.includes(tag),
-    );
-    return {
-      params: { tag },
-      props: { posts: filteredPosts },
-    };
-  });
+  const posts = await getAllPosts();
+  const tagMap = new Map<string, { name: string; slug: string }>();
+  for (const p of posts) {
+    for (const t of p.tags) {
+      if (!tagMap.has(t.slug)) tagMap.set(t.slug, t);
+    }
+  }
+  return [...tagMap.values()].map((t) => ({
+    params: { tag: t.slug },
+    props: { tag: t },
+  }));
 }
 
-const { tag } = Astro.params;
-const { posts } = Astro.props;
+const { tag } = Astro.props as { tag: { name: string; slug: string } };
+const all = await getAllPosts();
+const posts = all.filter((p) => p.tags.some((t) => t.slug === tag.slug));
+
+const CATEGORY_FOLDERS: Record<string, string> = {
+  shared: "shared",
+  stories: "stories",
+  "new-charts": "new_charts",
+  authors: "authors",
+};
+
+function categoryFolderFor(post: (typeof posts)[number]): string {
+  for (const t of post.tags) {
+    if (CATEGORY_FOLDERS[t.slug]) return CATEGORY_FOLDERS[t.slug];
+  }
+  return "shared";
+}
 ---
 
-<BaseLayout pageTitle={tag}>
-  <p>Posts tagged with {tag}</p>
-  <ul>
-    {
-      posts.map((post) => (
-        <BlogPost url={`/shared/${post.id}/`} title={post.data.title} />
-      ))
-    }
-  </ul>
+<BaseLayout title={tag.name} is404Page={false}>
+  {
+    posts.map((post) => (
+      <CmsBlogPost
+        url={`/${categoryFolderFor(post)}/${post.slug}/`}
+        image={post.imageUrl}
+        alt={post.title}
+        title={post.title}
+        description={post.description}
+        pubDate={post.publishedAt}
+      />
+    ))
+  }
 </BaseLayout>

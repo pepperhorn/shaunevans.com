@@ -71,4 +71,34 @@ export async function getPage(permalink: string): Promise<CmsPage | null> {
   return page;
 }
 
+/**
+ * Filter posts that have BOTH category and target tags. Uses the
+ * category fetch (already cached) and filters in-memory.
+ */
+export async function getCategoryPostsWithTag(
+  categorySlug: string,
+  tagSlug: string,
+): Promise<CmsPost[]> {
+  const all = await getPostsByTag(categorySlug);
+  return all.filter((p) => p.tags.some((t) => t.slug === tagSlug));
+}
+
+/**
+ * Unique tags (excluding the category tag itself) appearing on
+ * posts in the given category.
+ */
+export async function getCategoryTags(
+  categorySlug: string,
+): Promise<{ name: string; slug: string }[]> {
+  const posts = await getPostsByTag(categorySlug);
+  const seen = new Map<string, { name: string; slug: string }>();
+  for (const p of posts) {
+    for (const t of p.tags) {
+      if (t.slug === categorySlug) continue;
+      if (!seen.has(t.slug)) seen.set(t.slug, t);
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export type { CmsPost, CmsPage } from "@/lib/directus";
