@@ -1,4 +1,5 @@
 ---
+import AudioPlayer from "@/components/cms/AudioPlayer";
 import { assetUrl, type CmsBlock } from "@/lib/directus";
 
 interface Props {
@@ -103,6 +104,24 @@ const bool = (v: unknown): boolean => Boolean(v);
                 </video>
               )}
             </div>
+          </section>
+        );
+      }
+
+      if (b.collection === "block_audio") {
+        const audioUrl = str(b.item.audio_url);
+        const headline = str(b.item.headline);
+        const tagline = str(b.item.tagline);
+        return (
+          <section class={wrapperClasses}>
+            {audioUrl && (
+              <AudioPlayer
+                client:only="react"
+                audioUrl={audioUrl}
+                headline={headline || undefined}
+                tagline={tagline || undefined}
+              />
+            )}
           </section>
         );
       }
