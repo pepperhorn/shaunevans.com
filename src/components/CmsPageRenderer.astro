@@ -11,6 +11,59 @@ const { blocks } = Astro.props;
 // Helpers to safely read fields off the generic `item` payload.
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const bool = (v: unknown): boolean => Boolean(v);
+
+// open.spotify.com/<kind>/<id>?... → open.spotify.com/embed/<kind>/<id>
+function spotifyEmbedUrl(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    if (!u.hostname.endsWith("spotify.com")) return null;
+    if (u.pathname.startsWith("/embed/")) return u.toString();
+    const parts = u.pathname.replace(/^\/+/, "").split("/");
+    if (parts.length < 2) return null;
+    const [kind, id] = parts;
+    if (!["track", "album", "playlist", "artist", "episode", "show"].includes(kind!)) return null;
+    return `https://open.spotify.com/embed/${kind}/${id}`;
+  } catch {
+    return null;
+  }
+}
+
+// Returns {src, isPlaylist} for any of: youtu.be/<id>, youtube.com/watch?v=<id>,
+// youtube.com/playlist?list=<id>, or a raw 11-char video id.
+function youtubeEmbedUrl(raw: string): { src: string; isPlaylist: boolean } | null {
+  try {
+    if (/^[a-zA-Z0-9_-]{11}$/.test(raw.trim())) {
+      return { src: `https://www.youtube.com/embed/${raw.trim()}`, isPlaylist: false };
+    }
+    const u = new URL(raw);
+    if (!/(^|\.)youtube\.com$/.test(u.hostname) && u.hostname !== "youtu.be") return null;
+    if (u.hostname === "youtu.be") {
+      const id = u.pathname.slice(1);
+      return id ? { src: `https://www.youtube.com/embed/${id}`, isPlaylist: false } : null;
+    }
+    if (u.pathname === "/playlist") {
+      const list = u.searchParams.get("list");
+      return list
+        ? { src: `https://www.youtube.com/embed/videoseries?list=${list}`, isPlaylist: true }
+        : null;
+    }
+    if (u.pathname === "/watch") {
+      const v = u.searchParams.get("v");
+      const list = u.searchParams.get("list");
+      if (!v) return null;
+      const src = list
+        ? `https://www.youtube.com/embed/${v}?list=${list}`
+        : `https://www.youtube.com/embed/${v}`;
+      return { src, isPlaylist: Boolean(list) };
+    }
+    if (u.pathname.startsWith("/embed/")) {
+      return { src: u.toString(), isPlaylist: u.pathname.includes("videoseries") };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 ---
 
 <div class="cms-page">
@@ -122,6 +175,86 @@ const bool = (v: unknown): boolean => Boolean(v);
                 tagline={tagline || undefined}
               />
             )}
+          </section>
+        );
+      }
+
+      if (b.collection === "block_spotify") {
+        const raw = str(b.item.spotify_url);
+        const headline = str(b.item.headline);
+        const tagline = str(b.item.tagline);
+        const embed = spotifyEmbedUrl(raw);
+        // Track embeds are short (152px); album/playlist/artist taller (352px).
+        const kind = embed?.match(/embed\/(\w+)\//)?.[1] ?? "track";
+        const height = kind === "track" ? 152 : 352;
+        return (
+          <section class={wrapperClasses}>
+            <div class="cms-spotify-container mx-auto max-w-3xl px-4 py-8">
+              {tagline && (
+                <p class="cms-tagline font-overpass-mono uppercase text-sm text-gray-500 dark:text-gray-400 mb-2 text-center">
+                  {tagline}
+                </p>
+              )}
+              {headline && (
+                <h2 class="cms-headline font-overpass-mono text-3xl sm:text-4xl mb-4 text-center">
+                  {headline}
+                </h2>
+              )}
+              {embed ? (
+                <iframe
+                  class="cms-spotify-iframe w-full rounded-xl shadow"
+                  src={embed}
+                  height={height}
+                  width="100%"
+                  frameborder="0"
+                  allowfullscreen
+                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                  loading="lazy"
+                  title="Spotify player"
+                ></iframe>
+              ) : (
+                <p class="text-sm text-red-600">Invalid Spotify URL: {raw}</p>
+              )}
+            </div>
+          </section>
+        );
+      }
+
+      if (b.collection === "block_youtube") {
+        const raw = str(b.item.youtube_url);
+        const headline = str(b.item.headline);
+        const tagline = str(b.item.tagline);
+        const parsed = youtubeEmbedUrl(raw);
+        return (
+          <section class={wrapperClasses}>
+            <div class="cms-youtube-container mx-auto max-w-4xl px-4 py-8">
+              {tagline && (
+                <p class="cms-tagline font-overpass-mono uppercase text-sm text-gray-500 dark:text-gray-400 mb-2 text-center">
+                  {tagline}
+                </p>
+              )}
+              {headline && (
+                <h2 class="cms-headline font-overpass-mono text-3xl sm:text-4xl mb-4 text-center">
+                  {headline}
+                </h2>
+              )}
+              {parsed ? (
+                <div class="cms-youtube-frame relative w-full overflow-hidden rounded-lg shadow" style="aspect-ratio: 16 / 9;">
+                  <iframe
+                    class="absolute inset-0 h-full w-full"
+                    src={parsed.src}
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerpolicy="strict-origin-when-cross-origin"
+                    allowfullscreen
+                    loading="lazy"
+                    title={parsed.isPlaylist ? "YouTube playlist" : "YouTube video"}
+                  ></iframe>
+                </div>
+              ) : (
+                <p class="text-sm text-red-600">Invalid YouTube URL: {raw}</p>
+              )}
+            </div>
           </section>
         );
       }
