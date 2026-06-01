@@ -1,5 +1,5 @@
 ---
-import type { CmsBlock } from "@/lib/directus";
+import { assetUrl, type CmsBlock } from "@/lib/directus";
 
 interface Props {
   blocks: CmsBlock[];
@@ -53,6 +53,54 @@ const bool = (v: unknown): boolean => Boolean(v);
                   class="cms-richtext prose dark:prose-invert max-w-none"
                   set:html={content}
                 />
+              )}
+            </div>
+          </section>
+        );
+      }
+
+      if (b.collection === "block_video") {
+        const videoUrl = str(b.item.video_url);
+        const headline = str(b.item.headline);
+        const tagline = str(b.item.tagline);
+        const posterUuid = str(b.item.poster_image);
+        const poster = posterUuid ? assetUrl(posterUuid, "") : "";
+        const autoplay = bool(b.item.autoplay);
+        // Lowercase extension check — covers the common B2-hosted formats.
+        const ext = videoUrl.split("?")[0]!.split(".").pop()?.toLowerCase() ?? "";
+        const mime =
+          ext === "webm" ? "video/webm" :
+          ext === "mov" ? "video/quicktime" :
+          ext === "ogv" || ext === "ogg" ? "video/ogg" :
+          "video/mp4";
+        return (
+          <section class={wrapperClasses}>
+            <div class="cms-video-container mx-auto max-w-4xl px-4 py-8">
+              {tagline && (
+                <p class="cms-tagline font-overpass-mono uppercase text-sm text-gray-500 dark:text-gray-400 mb-2 text-center">
+                  {tagline}
+                </p>
+              )}
+              {headline && (
+                <h2 class="cms-headline font-overpass-mono text-3xl sm:text-4xl mb-4 text-center">
+                  {headline}
+                </h2>
+              )}
+              {videoUrl && (
+                <video
+                  class="cms-video w-full rounded-lg shadow"
+                  controls
+                  preload={autoplay ? "auto" : "metadata"}
+                  poster={poster || undefined}
+                  autoplay={autoplay || undefined}
+                  muted={autoplay || undefined}
+                  playsinline={autoplay || undefined}
+                  loop={autoplay || undefined}
+                >
+                  <source src={videoUrl} type={mime} />
+                  Your browser does not support the video tag.{" "}
+                  <a href={videoUrl}>Download video</a>.
+                </video>
               )}
             </div>
           </section>
