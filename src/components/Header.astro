@@ -32,7 +32,7 @@ const { is404Page = false } = Astro.props;
               <ThemeToggle />
             </div>
             <div class="flex items-center justify-center h-[30px] w-[30px]">
-              <CartIcon client:load />
+              <CartIcon client:only="react" />
             </div>
             <div class="flex items-center justify-center h-[30px] w-[30px]">
               <Hamburger />
@@ -50,5 +50,5 @@ const { is404Page = false } = Astro.props;
     )
   }
   <slot />
-  {!is404Page && <CartSheet client:load />}
+  {!is404Page && <CartSheet client:only="react" />}
 </header>
