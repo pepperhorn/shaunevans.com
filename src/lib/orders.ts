@@ -90,21 +90,28 @@ export type Order = {
 };
 
 export async function createOrder(input: NewOrderInput): Promise<Order> {
-  const subtotal = input.lines.reduce(
-    (sum, l) => sum + l.unit_price * l.quantity,
+  // Australian GST 10%, included in displayed prices. The customer pays the
+  // displayed (GST-incl) price exactly; we back-calculate the GST component.
+  // Work in cents to avoid float drift on toFixed.
+  const totalCents = input.lines.reduce(
+    (sum, l) => sum + Math.round(l.unit_price * 100) * l.quantity,
     0,
   );
-  const tax = 0;
-  const total = subtotal + tax;
+  const taxCents = Math.round(totalCents / 11);
+  const subtotalCents = totalCents - taxCents;
+
+  const subtotal = (subtotalCents / 100).toFixed(2);
+  const tax = (taxCents / 100).toFixed(2);
+  const total = (totalCents / 100).toFixed(2);
 
   const order = await directusPost<Order>("/items/orders", {
     status: "pending",
     user: input.user_id,
     email: input.email,
     currency: input.currency,
-    subtotal: subtotal.toFixed(2),
-    tax: tax.toFixed(2),
-    total: total.toFixed(2),
+    subtotal,
+    tax,
+    total,
   });
 
   await directusPost("/items/order_items", input.lines.map((l) => ({

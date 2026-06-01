@@ -58,6 +58,9 @@ const title = order ? `Order ${order.id.slice(0, 8)}` : "Order confirmation";
               {order.total} {order.currency}
             </span>
           </div>
+          <p class="order-tax-note text-xs text-muted-foreground text-right mt-1">
+            Includes {order.tax} {order.currency} GST
+          </p>
 
           <p class="text-sm text-slate-500 mt-6">
             If payment has just completed, the status will update once Square

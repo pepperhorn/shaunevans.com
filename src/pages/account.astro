@@ -131,6 +131,11 @@ function statusColor(status: string): string {
                         {o.total} {o.currency}
                       </span>
                     </div>
+                    {Number(o.tax) > 0 && (
+                      <p class="text-[11px] text-muted-foreground text-right mt-0.5">
+                        Includes {o.tax} {o.currency} GST
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>

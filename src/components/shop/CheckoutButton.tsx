@@ -22,7 +22,7 @@ export default function CheckoutButton() {
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          currency: "GBP",
+          currency: "AUD",
           items: items.map((i) => ({ product_id: i.id, quantity: i.quantity })),
         }),
       });
