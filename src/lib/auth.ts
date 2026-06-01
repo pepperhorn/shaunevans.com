@@ -7,12 +7,6 @@ function directusBase(): string {
   return url;
 }
 
-function directusToken(): string {
-  const t = import.meta.env.DIRECTUS_TOKEN as string | undefined;
-  if (!t) throw new Error("DIRECTUS_TOKEN not set");
-  return t;
-}
-
 export async function requestOtp(email: string, name?: string): Promise<void> {
   const res = await fetch(`${directusBase()}/flows/trigger/${OTP_REQUEST_FLOW_ID}`, {
     method: "POST",
@@ -39,30 +33,12 @@ export async function verifyOtp(email: string, code: string): Promise<VerifiedUs
   });
   if (!res.ok) return null;
 
-  const data = (await res.json()) as
-    | { id?: number; email?: string; name?: string | null }
-    | { data?: { id?: number; email?: string; name?: string | null } }
+  // The verify flow's terminal `return_user` exec op emits the user shape
+  // directly. Directus wraps it as { data: { id, email, name } }.
+  const json = (await res.json().catch(() => null)) as
+    | { data?: { id?: number; email?: string; name?: string | null } | null }
     | null;
-
-  const user =
-    (data && "id" in data ? data : data && "data" in data ? data.data : null) as
-      | { id?: number; email?: string; name?: string | null }
-      | null;
-
-  if (!user || typeof user.id !== "number" || !user.email) return null;
-  return { id: user.id, email: user.email, name: user.name ?? null };
-}
-
-export async function findUserByEmail(email: string): Promise<VerifiedUser | null> {
-  const url = new URL(`${directusBase()}/items/users`);
-  url.searchParams.set("filter[email][_eq]", email);
-  url.searchParams.set("fields[]", "id,email,name");
-  url.searchParams.set("limit", "1");
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${directusToken()}` },
-  });
-  if (!res.ok) return null;
-  const json = (await res.json()) as { data?: Array<{ id: number; email: string; name: string | null }> };
-  const u = json.data?.[0];
-  return u ? { id: u.id, email: u.email, name: u.name } : null;
+  const u = json?.data;
+  if (!u || typeof u.id !== "number" || !u.email) return null;
+  return { id: u.id, email: u.email, name: u.name ?? null };
 }
