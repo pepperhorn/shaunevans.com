@@ -70,13 +70,13 @@ function statusColor(status: string): string {
           )
         }
       </div>
-      <AccountAuthGate mode="signout" client:load />
+      <AccountAuthGate mode="signout" client:only="react" />
     </header>
 
     {
       !sessUser ? (
         <section class="account-signin">
-          <AccountAuthGate mode="gate" client:load />
+          <AccountAuthGate mode="gate" client:only="react" />
         </section>
       ) : (
         <>
