@@ -98,10 +98,7 @@ export default function CartSheet() {
       open={open === "open"}
       onOpenChange={(next) => cartOpen.set(next ? "open" : "closed")}
     >
-      <SheetContent
-        side="right"
-        className="flex w-full flex-col bg-[#f2f2f2] text-gray-900 dark:bg-[rgb(34,33,37)] dark:text-[rgb(245,245,245)] sm:max-w-md"
-      >
+      <SheetContent side="right" className="flex w-full flex-col sm:max-w-md">
         <SheetHeader>
           <SheetTitle>Your cart</SheetTitle>
           <SheetDescription>
