@@ -13,14 +13,13 @@ import { fileURLToPath } from "node:url";
 import node from "@astrojs/node";
 // https://astro.build/config
 export default defineConfig({
-  site: process.env.GITHUB_PAGES === 'true' ? "https://pepperhorn.github.io" : "https://shaunevans.com",
-  base: process.env.GITHUB_PAGES === 'true' ? "/shaunevans" : undefined,
+  site: "https://shaunevans.com",
 
   image: {
     // responsiveStyles: true,
     // layout: "full-width",
     // objectFit: "contain",
-    domains: ["https://shaunevans.com"],
+    domains: ["shaunevans.com", "content.shaunevans.com"],
     service: {
       entrypoint: "astro/assets/services/sharp",
       config: {

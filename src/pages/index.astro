@@ -1,99 +1,60 @@
 ---
 import Homepage from "../components/Homepage.astro";
+import { getAllPosts } from "@/lib/posts";
+
 const { pageTitle } = Astro.props;
-import { getCollection } from "astro:content";
-import { getImage } from "astro:assets";
-import { resolveImage, isExternalImage } from "../utils/imageMap";
 
-const collections = ["stories", "new_charts", "shared"] as const;
-let allImages: { large: string[]; medium: string[]; small: string[] } = { large: [], medium: [], small: [] };
-let allAlts: string[] = [];
-let allUrls: string[] = [];
+const allPosts = await getAllPosts();
 
-for (let collection of collections) {
-  const allContent = await getCollection(collection);
-  const postsWithImages = allContent.filter(
-    (post) => post.data.image?.src && post.data.image?.alt && post.data.tags?.includes("featured"),
-  );
+// Folder mapping mirrors the tag-slug → URL prefix used elsewhere on the site.
+const CATEGORY_FOLDERS: Record<string, string> = {
+  shared: "shared",
+  stories: "stories",
+  "new-charts": "new_charts",
+  authors: "authors",
+};
 
-  const imagePromises = postsWithImages.map(async (post) => {
-    if (!post.data.image) return null;
-    try {
-      const resolvedSrc = resolveImage(post.data.image.src);
-      
-      // Skip external URLs - they can't be optimized at build time
-      if (isExternalImage(resolvedSrc)) {
-        console.warn(`Skipping external image for post ${post.id}: ${resolvedSrc}`);
-        return null;
-      }
-      
-      const [largeImage, mediumImage, smallImage] = await Promise.all([
-      getImage({
-        src: resolvedSrc,
-        alt: post.data.image.alt,
-        width: 1920,
-        height: 1080,
-        decoding: "async",
-        format: "avif",
-        quality: 65,
-      }),
-      getImage({
-        src: resolvedSrc,
-        alt: post.data.image.alt,
-        width: 1280,
-        height: 720,
-        decoding: "async",
-        format: "avif",
-        quality: 65,
-      }),
-      getImage({
-        src: resolvedSrc,
-        alt: post.data.image.alt,
-        width: 854,
-        height: 480,
-        decoding: "async",
-        format: "avif",
-        quality: 65,
-      }),
-    ]);
+function categoryFolderFor(post: (typeof allPosts)[number]): string | null {
+  for (const t of post.tags) {
+    if (CATEGORY_FOLDERS[t.slug]) return CATEGORY_FOLDERS[t.slug];
+  }
+  return null;
+}
 
-      return {
-        large: largeImage.src,
-        medium: mediumImage.src,
-        small: smallImage.src,
-        alt: post.data.image.alt,
-        url: `/${collection}/${post.id}`,
-      };
-    } catch (error) {
-      console.warn(`Skipping image for post ${post.id}:`, error.message);
-      return null;
-    }
-  });
+// Featured posts that have a Directus image and live in a known category folder.
+const featured = allPosts.filter((p) => {
+  if (!p.imageUrl) return false;
+  if (!p.tags.some((t) => t.slug === "featured")) return false;
+  return categoryFolderFor(p) !== null;
+});
 
-  const results = await Promise.all(imagePromises);
+// WebP, not AVIF: cold-encode AVIF at 1920×1080 takes ~11s on the Directus
+// host; WebP is ~1s for an ~8KB size penalty. After cache warm-up both serve
+// sub-300ms, but WebP keeps the cold hit bounded after the asset TTL expires.
+const directusTransform = (url: string, w: number, h: number) =>
+  `${url}?width=${w}&height=${h}&fit=cover&format=webp&quality=65`;
 
-  results.forEach((result) => {
-    if (result) {
-      allImages.large.push(result.large);
-      allImages.medium.push(result.medium);
-      allImages.small.push(result.small);
-      allAlts.push(result.alt);
-      allUrls.push(result.url);
-    }
-  });
+const allImages = {
+  large: [] as string[],
+  medium: [] as string[],
+  small: [] as string[],
+};
+const allAlts: string[] = [];
+const allUrls: string[] = [];
+
+for (const post of featured) {
+  const folder = categoryFolderFor(post)!;
+  const img = post.imageUrl!;
+  allImages.large.push(directusTransform(img, 1920, 1080));
+  allImages.medium.push(directusTransform(img, 1280, 720));
+  allImages.small.push(directusTransform(img, 854, 480));
+  allAlts.push(post.title);
+  allUrls.push(`/${folder}/${post.slug}/`);
 }
 
 const imageSizes = {
-  width: {
-    large: 1920,
-    medium: 1280,
-    small: 854,
-  },
-  height: {
-    large: 1080,
-    medium: 720,
-    small: 480,
-  },
+  width: { large: 1920, medium: 1280, small: 854 },
+  height: { large: 1080, medium: 720, small: 480 },
 };
 ---
 

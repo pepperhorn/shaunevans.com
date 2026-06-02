@@ -1,5 +1,5 @@
 {
-  "name": "Revistav4",
+  "name": "shaunevans-com",
   "type": "module",
   "version": "6.0.0",
   "scripts": {
@@ -8,8 +8,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "postbuild": "pagefind --site dist",
-    "build:github-pages": "GITHUB_PAGES=true astro build && pagefind --site dist",
+    "postbuild": "pagefind --site dist && node scripts/warm-image-cache.mjs",
     "create": "node scripts/create-content.js",
     "update-post": "node scripts/update-post.js",
     "update": "node scripts/update-post.js",
@@ -64,7 +63,8 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.14",
     "typescript": "^5.9.3",
-    "undici": "^7.16.0"
+    "undici": "^7.16.0",
+    "wavesurfer.js": "^7.12.7"
   },
   "devDependencies": {
     "@tailwindcss/aspect-ratio": "^0.4.2",

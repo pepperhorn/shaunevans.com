@@ -1,0 +1,73 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { getOrderForUser } from "@/lib/orders";
+
+export const prerender = false;
+
+const orderId = Astro.params.id!;
+const sessUser = await Astro.session?.get<{ id: number; email: string; name: string | null }>("user");
+
+const order = sessUser ? await getOrderForUser(orderId, sessUser.id) : null;
+const title = order ? `Order ${order.id.slice(0, 8)}` : "Order confirmation";
+---
+
+<BaseLayout title={title} is404Page={false}>
+  <main class="order-confirmation mx-auto max-w-2xl px-4 py-12">
+    <h1 class="font-overpass-mono text-3xl uppercase mb-4">Thanks for your order</h1>
+
+    {
+      !sessUser ? (
+        <p class="text-sm text-slate-500">
+          Your session has expired.{" "}
+          <a href="/account" class="underline">
+            Sign in
+          </a>{" "}
+          to view this order.
+        </p>
+      ) : !order ? (
+        <p class="text-sm text-slate-500">
+          We couldn't find that order on your account.{" "}
+          <a href="/account" class="underline">
+            See all orders
+          </a>
+          .
+        </p>
+      ) : (
+        <section class="order-summary">
+          <p class="order-status text-sm text-slate-500 mb-2">
+            Status: <strong>{order.status}</strong>
+          </p>
+          <p class="text-sm text-slate-500 mb-6">Order ID: <code>{order.id}</code></p>
+
+          <ul class="order-items divide-y border rounded-md mb-6">
+            {order.items.map((line) => (
+              <li class="order-line flex justify-between gap-4 px-4 py-3 text-sm">
+                <span>
+                  {line.quantity}× {line.name}
+                </span>
+                <span class="tabular-nums">
+                  {line.line_total} {order.currency}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <div class="order-total flex justify-between text-base font-semibold">
+            <span>Total</span>
+            <span class="tabular-nums">
+              {order.total} {order.currency}
+            </span>
+          </div>
+          <p class="order-tax-note text-xs text-muted-foreground text-right mt-1">
+            Includes {order.tax} {order.currency} GST
+          </p>
+
+          <p class="text-sm text-slate-500 mt-6">
+            If payment has just completed, the status will update once Square
+            confirms it. We'll email your downloads to <strong>{order.email}</strong>.
+          </p>
+        </section>
+      )
+    }
+  </main>
+</BaseLayout>

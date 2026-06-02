@@ -18,9 +18,10 @@ import {
   updateQuantity,
   type CartItem,
 } from "@/lib/cart";
+import CheckoutButton from "./CheckoutButton";
 
 function formatPrice(value: number) {
-  return value.toLocaleString("en-US", { style: "currency", currency: "USD" });
+  return value.toLocaleString("en-AU", { style: "currency", currency: "AUD" });
 }
 
 function CartLine({ item }: { item: CartItem }) {
@@ -127,19 +128,18 @@ export default function CartSheet() {
 
         {items.length > 0 && (
           <SheetFooter className="border-t">
-            <div className="flex w-full items-center justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
+            <div className="cart-total flex w-full items-center justify-between text-sm">
+              <span className="text-muted-foreground">Total (incl. GST)</span>
               <span className="text-base font-semibold tabular-nums">
                 {formatPrice(subtotal)}
               </span>
             </div>
             <Separator />
             <p className="text-xs text-muted-foreground">
-              Shipping and taxes calculated at checkout.
+              Prices include 10% GST. Digital goods — delivered by email after
+              payment.
             </p>
-            <Button className="w-full" disabled>
-              Checkout (coming soon)
-            </Button>
+            <CheckoutButton />
           </SheetFooter>
         )}
       </SheetContent>

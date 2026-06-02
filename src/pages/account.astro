@@ -1,0 +1,210 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import CmsPageRenderer from "@/components/CmsPageRenderer.astro";
+import AccountAuthGate from "@/components/shop/AccountAuthGate";
+import { getOrdersForUser } from "@/lib/orders";
+import { getBookingsForEmail } from "@/lib/bookings";
+import { fetchPageByPermalink } from "@/lib/directus";
+
+export const prerender = false;
+
+const sessUser = await Astro.session?.get<{ id: number; email: string; name: string | null }>("user");
+
+let orders: Awaited<ReturnType<typeof getOrdersForUser>> = [];
+let bookings: Awaited<ReturnType<typeof getBookingsForEmail>> = [];
+let cmsPage: Awaited<ReturnType<typeof fetchPageByPermalink>> = null;
+
+if (sessUser) {
+  [orders, bookings, cmsPage] = await Promise.all([
+    getOrdersForUser(sessUser.id).catch(() => []),
+    getBookingsForEmail(sessUser.email).catch(() => []),
+    fetchPageByPermalink("/account").catch(() => null),
+  ]);
+}
+
+const title = sessUser ? `Account — ${sessUser.email}` : "Account";
+
+function fmtDate(s: string | null | undefined): string {
+  if (!s) return "";
+  try {
+    return new Date(s).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return s;
+  }
+}
+
+function statusColor(status: string): string {
+  switch (status) {
+    case "paid":
+    case "fulfilled":
+    case "responded":
+      return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200";
+    case "pending":
+    case "awaiting_payment":
+    case "new":
+      return "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200";
+    case "cancelled":
+    case "refunded":
+    case "archived":
+      return "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200";
+    default:
+      return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200";
+  }
+}
+---
+
+<BaseLayout title={title} is404Page={false}>
+  <main class="account-page mx-auto max-w-3xl px-4 py-12">
+    <header class="account-header mb-8 flex items-start justify-between gap-4">
+      <div>
+        <h1 class="font-overpass-mono text-3xl uppercase">Your account</h1>
+        {
+          sessUser && (
+            <p class="text-sm text-muted-foreground mt-1">
+              Signed in as <strong>{sessUser.email}</strong>
+            </p>
+          )
+        }
+      </div>
+      <AccountAuthGate mode="signout" client:only="react" />
+    </header>
+
+    {
+      !sessUser ? (
+        <section class="account-signin">
+          <AccountAuthGate mode="gate" client:only="react" />
+        </section>
+      ) : (
+        <>
+          {cmsPage && cmsPage.blocks.length > 0 && (
+            <section class="account-cms mb-10">
+              <CmsPageRenderer blocks={cmsPage.blocks} />
+            </section>
+          )}
+
+          <section class="account-orders mb-12">
+            <h2 class="font-overpass-mono text-xl uppercase mb-4">Orders</h2>
+            {orders.length === 0 ? (
+              <p class="text-sm text-muted-foreground">
+                No orders yet.{" "}
+                <a href="/shop/" class="underline">
+                  Browse the shop
+                </a>
+                .
+              </p>
+            ) : (
+              <ul class="order-list flex flex-col gap-3">
+                {orders.map((o) => (
+                  <li class="order-card rounded-md border p-4">
+                    <div class="flex items-start justify-between gap-3 mb-2">
+                      <div>
+                        <p class="text-xs text-muted-foreground font-mono">
+                          {o.id.slice(0, 8)}
+                        </p>
+                        <p class="text-xs text-muted-foreground">
+                          {fmtDate(o.date_created)}
+                        </p>
+                      </div>
+                      <span class={`status-chip rounded px-2 py-0.5 text-xs uppercase ${statusColor(o.status)}`}>
+                        {o.status.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                    <ul class="order-lines text-sm divide-y mb-2">
+                      {(o.items ?? []).map((line) => (
+                        <li class="flex justify-between gap-3 py-1.5">
+                          <span>
+                            {line.quantity}× {line.name}
+                          </span>
+                          <span class="tabular-nums">
+                            {line.line_total} {o.currency}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div class="flex justify-between text-sm font-semibold">
+                      <span>Total</span>
+                      <span class="tabular-nums">
+                        {o.total} {o.currency}
+                      </span>
+                    </div>
+                    {Number(o.tax) > 0 && (
+                      <p class="text-[11px] text-muted-foreground text-right mt-0.5">
+                        Includes {o.tax} {o.currency} GST
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section class="account-bookings">
+            <h2 class="font-overpass-mono text-xl uppercase mb-4">Lesson bookings</h2>
+            {bookings.length === 0 ? (
+              <p class="text-sm text-muted-foreground">
+                No bookings yet.{" "}
+                <a href="/lessons/" class="underline">
+                  See lesson packages
+                </a>
+                .
+              </p>
+            ) : (
+              <ul class="booking-list flex flex-col gap-3">
+                {bookings.map((b) => (
+                  <li class="booking-card rounded-md border p-4">
+                    <div class="flex items-start justify-between gap-3 mb-2">
+                      <div>
+                        <p class="text-sm font-medium">{b.package_slug}</p>
+                        <p class="text-xs text-muted-foreground">
+                          Requested {fmtDate(b.date_created)}
+                        </p>
+                      </div>
+                      <span class={`status-chip rounded px-2 py-0.5 text-xs uppercase ${statusColor(b.status ?? "new")}`}>
+                        {b.status ?? "new"}
+                      </span>
+                    </div>
+                    <dl class="booking-meta grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                      {b.instrument && (
+                        <div>
+                          <dt class="opacity-70">Instrument</dt>
+                          <dd class="text-foreground">{b.instrument}</dd>
+                        </div>
+                      )}
+                      {b.experience_level && (
+                        <div>
+                          <dt class="opacity-70">Level</dt>
+                          <dd class="text-foreground">{b.experience_level}</dd>
+                        </div>
+                      )}
+                      {b.preferred_date && (
+                        <div>
+                          <dt class="opacity-70">Preferred date</dt>
+                          <dd class="text-foreground">{fmtDate(b.preferred_date)}</dd>
+                        </div>
+                      )}
+                      {b.time_preference && (
+                        <div>
+                          <dt class="opacity-70">Time</dt>
+                          <dd class="text-foreground">{b.time_preference}</dd>
+                        </div>
+                      )}
+                    </dl>
+                    {b.notes && (
+                      <p class="booking-notes mt-2 text-xs text-muted-foreground italic">
+                        “{b.notes}”
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
+      )
+    }
+  </main>
+</BaseLayout>
