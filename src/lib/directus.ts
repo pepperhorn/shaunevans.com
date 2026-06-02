@@ -95,6 +95,26 @@ type RawLesson = {
 
 import type { Lesson } from "@/data/lessons";
 
+// ── Globals ───────────────────────────────────────────────────────────────
+
+export type Globals = {
+  homeCategoryItems: number;
+};
+
+type RawGlobals = {
+  home_category_items: string | number | null;
+};
+
+export async function fetchGlobals(): Promise<Globals> {
+  const raw = await directusFetch<RawGlobals>("/items/globals", {
+    "fields[]": "home_category_items",
+  });
+  const parsed = Number(raw.home_category_items);
+  return {
+    homeCategoryItems: Number.isFinite(parsed) && parsed > 0 ? parsed : 4,
+  };
+}
+
 export async function fetchLessons(): Promise<Lesson[]> {
   const items = await directusFetch<RawLesson[]>("/items/lessons", {
     "filter[status][_eq]": "published",

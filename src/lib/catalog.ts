@@ -9,11 +9,20 @@
 
 import { products as stubProducts, type Product } from "@/data/products";
 import { lessons as stubLessons, type Lesson } from "@/data/lessons";
-import { directusEnabled, fetchProducts, fetchLessons } from "@/lib/directus";
+import {
+  directusEnabled,
+  fetchProducts,
+  fetchLessons,
+  fetchGlobals,
+  type Globals,
+} from "@/lib/directus";
+
+const STUB_GLOBALS: Globals = { homeCategoryItems: 4 };
 
 // Cache fetched data across calls within a single build.
 let _products: Product[] | null = null;
 let _lessons: Lesson[] | null = null;
+let _globals: Globals | null = null;
 
 export async function getProducts(): Promise<Product[]> {
   if (_products) return _products;
@@ -58,4 +67,18 @@ export async function getLesson(slug: string): Promise<Lesson | undefined> {
   return all.find((l) => l.slug === slug);
 }
 
-export type { Product, Lesson };
+export async function getGlobals(): Promise<Globals> {
+  if (_globals) return _globals;
+  if (directusEnabled) {
+    try {
+      _globals = await fetchGlobals();
+      return _globals;
+    } catch (err) {
+      console.warn("[catalog] Directus globals fetch failed, falling back:", err);
+    }
+  }
+  _globals = STUB_GLOBALS;
+  return _globals;
+}
+
+export type { Product, Lesson, Globals };

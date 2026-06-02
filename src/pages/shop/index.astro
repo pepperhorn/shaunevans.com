@@ -2,9 +2,21 @@
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import ProductCard from "../../components/shop/ProductCard.tsx";
 import { Badge } from "../../components/ui/badge.tsx";
-import { getProducts } from "@/lib/catalog";
+import { getProducts, getGlobals } from "@/lib/catalog";
 
-const products = await getProducts();
+const [products, globals] = await Promise.all([getProducts(), getGlobals()]);
+
+// Tailwind JIT needs literal class names — map clamped values to known classes.
+const LG_COLS: Record<number, string> = {
+  1: "lg:grid-cols-1",
+  2: "lg:grid-cols-2",
+  3: "lg:grid-cols-3",
+  4: "lg:grid-cols-4",
+  5: "lg:grid-cols-5",
+  6: "lg:grid-cols-6",
+};
+const cols = Math.min(6, Math.max(1, globals.homeCategoryItems));
+const lgColsClass = LG_COLS[cols];
 const categories = Array.from(new Set(products.map((p) => p.category)));
 const categoryLabel: Record<string, string> = {
   "sheet-music": "Sheet Music",
@@ -63,7 +75,7 @@ const description =
               {products.filter((p) => p.category === cat).length} items
             </span>
           </div>
-          <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div class={`grid grid-cols-1 gap-6 sm:grid-cols-2 ${lgColsClass}`}>
             {products
               .filter((p) => p.category === cat)
               .map((product) => (
