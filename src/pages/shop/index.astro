@@ -1,10 +1,12 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import ProductCard from "../../components/shop/ProductCard.tsx";
+import ShopShell from "../../components/shop/ShopShell.tsx";
 import { Badge } from "../../components/ui/badge.tsx";
-import { getProducts } from "@/lib/catalog";
+import { getProducts, getSeries } from "@/lib/catalog";
 
-const products = await getProducts();
+const [products, series] = await Promise.all([getProducts(), getSeries()]);
+
 const categories = Array.from(new Set(products.map((p) => p.category)));
 const categoryLabel: Record<string, string> = {
   "sheet-music": "Sheet Music",
@@ -23,64 +25,54 @@ const description =
   description={description}
   site_name="ShaunEvans.com"
 >
-  <div class="mx-auto w-full max-w-7xl px-6 py-10 max-sm:px-4">
-    <header class="mb-10 space-y-4">
-      <Badge variant="outline" className="text-xs">Shop</Badge>
-      <h1
-        class="font-overpass-mono text-4xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)] sm:text-5xl"
-      >
-        Sheet music, records, courses.
-      </h1>
-      <p
-        class="max-w-2xl text-base text-gray-700 dark:text-gray-300 sm:text-lg"
-      >
-        Original scores, recordings, and self-paced courses, plus the occasional
-        signed print. Everything ships from Singapore; digital items download
-        instantly after checkout.
-      </p>
-      <div class="flex flex-wrap gap-2 pt-2">
-        {
-          categories.map((cat) => (
-            <a
-              href={`#${cat}`}
-              class="rounded-full border border-border bg-background px-3 py-1 text-sm hover:bg-muted"
-            >
-              {categoryLabel[cat]}
-            </a>
-          ))
-        }
-      </div>
-    </header>
+  <ShopShell series={series} client:load>
+    <div class="mx-auto w-full max-w-7xl px-6 py-10 max-sm:px-4">
+      <header class="mb-10 space-y-4">
+        <Badge variant="outline" className="text-xs">Shop</Badge>
+        <h1
+          class="font-overpass-mono text-4xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)] sm:text-5xl"
+        >
+          Sheet music, records, courses.
+        </h1>
+        <p
+          class="max-w-2xl text-base text-gray-700 dark:text-gray-300 sm:text-lg"
+        >
+          Original scores, recordings, and self-paced courses, plus the
+          occasional signed print. Everything ships from Singapore; digital
+          items download instantly after checkout.
+        </p>
+      </header>
 
-    {
-      categories.map((cat) => {
-        const inCategory = products.filter((p) => p.category === cat);
-        return (
-          <section id={cat} class="category-row mb-12 scroll-mt-20">
-            <div class="category-row-header mb-4 flex items-baseline justify-between gap-4">
-              <h2 class="category-title font-overpass-mono text-xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)]">
-                {categoryLabel[cat]}
-              </h2>
-              <a
-                href={`/shop/c/${cat}/`}
-                class="category-all-link group inline-flex items-baseline gap-1 whitespace-nowrap font-overpass-mono text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-[rgb(245,245,245)]"
+      {
+        categories.map((cat) => {
+          const inCategory = products.filter((p) => p.category === cat);
+          return (
+            <section id={cat} class="category-row mb-12 scroll-mt-20">
+              <div class="category-row-header mb-4 flex items-baseline justify-between gap-4">
+                <h2 class="category-title font-overpass-mono text-xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)]">
+                  {categoryLabel[cat]}
+                </h2>
+                <a
+                  href={`/shop/c/${cat}/`}
+                  class="category-all-link group inline-flex items-baseline gap-1 whitespace-nowrap font-overpass-mono text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-[rgb(245,245,245)]"
+                >
+                  All ({inCategory.length})
+                  <span class="category-all-arrow transition-transform group-hover:translate-x-0.5">›</span>
+                </a>
+              </div>
+              <div
+                class="category-scroll -mx-6 flex snap-x snap-mandatory gap-6 overflow-x-auto px-6 pb-4 max-sm:-mx-4 max-sm:px-4"
               >
-                All ({inCategory.length})
-                <span class="category-all-arrow transition-transform group-hover:translate-x-0.5">›</span>
-              </a>
-            </div>
-            <div
-              class="category-scroll -mx-6 flex snap-x snap-mandatory gap-6 overflow-x-auto px-6 pb-4 max-sm:-mx-4 max-sm:px-4"
-            >
-              {inCategory.map((product) => (
-                <div class="product-card-slot w-[260px] shrink-0 snap-start sm:w-[280px]">
-                  <ProductCard product={product} client:load />
-                </div>
-              ))}
-            </div>
-          </section>
-        );
-      })
-    }
-  </div>
+                {inCategory.map((product) => (
+                  <div class="product-card-slot w-[260px] shrink-0 snap-start sm:w-[280px]">
+                    <ProductCard product={product} client:load />
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        })
+      }
+    </div>
+  </ShopShell>
 </BaseLayout>

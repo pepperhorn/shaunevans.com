@@ -95,6 +95,52 @@ type RawLesson = {
 
 import type { Lesson } from "@/data/lessons";
 
+// ── Globals ───────────────────────────────────────────────────────────────
+
+export type Globals = {
+  homeCategoryItems: number;
+};
+
+type RawGlobals = {
+  home_category_items: string | number | null;
+};
+
+export async function fetchGlobals(): Promise<Globals> {
+  const raw = await directusFetch<RawGlobals>("/items/globals", {
+    "fields[]": "home_category_items",
+  });
+  const parsed = Number(raw.home_category_items);
+  return {
+    homeCategoryItems: Number.isFinite(parsed) && parsed > 0 ? parsed : 4,
+  };
+}
+
+// ── Series ────────────────────────────────────────────────────────────────
+
+type RawSeries = {
+  id: string;
+  title: string;
+  slug: string;
+  access_tier: string | null;
+};
+
+import type { Series } from "@/data/series";
+
+export async function fetchSeries(): Promise<Series[]> {
+  const items = await directusFetch<RawSeries[]>("/items/series", {
+    "filter[status][_eq]": "published",
+    "fields[]": "id,title,slug,access_tier",
+    "sort[]": "sort,title",
+    limit: "50",
+  });
+  return items.map((s) => ({
+    id: s.id,
+    title: s.title,
+    slug: s.slug,
+    access_tier: (s.access_tier ?? "free") as Series["access_tier"],
+  }));
+}
+
 export async function fetchLessons(): Promise<Lesson[]> {
   const items = await directusFetch<RawLesson[]>("/items/lessons", {
     "filter[status][_eq]": "published",
