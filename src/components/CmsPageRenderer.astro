@@ -1,6 +1,8 @@
 ---
 import AudioPlayer from "@/components/cms/AudioPlayer";
+import FormRenderer from "@/components/cms/FormRenderer";
 import { assetUrl, type CmsBlock } from "@/lib/directus";
+import type { FormDefinition } from "@/lib/forms";
 
 interface Props {
   blocks: CmsBlock[];
@@ -157,6 +159,28 @@ function youtubeEmbedUrl(raw: string): { src: string; isPlaylist: boolean } | nu
                 </video>
               )}
             </div>
+          </section>
+        );
+      }
+
+      if (b.collection === "block_form") {
+        const headline = str(b.item.headline);
+        const tagline = str(b.item.tagline);
+        const form = b.item.form as FormDefinition | string | null | undefined;
+        return (
+          <section class={wrapperClasses}>
+            {form && typeof form === "object" ? (
+              <FormRenderer
+                client:load
+                form={form}
+                headline={headline || undefined}
+                tagline={tagline || undefined}
+              />
+            ) : (
+              <div class="mx-auto max-w-2xl px-4 py-8 text-sm text-red-600">
+                Form block is missing a form selection.
+              </div>
+            )}
           </section>
         );
       }

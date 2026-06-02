@@ -8,7 +8,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "postbuild": "pagefind --site dist",
+    "postbuild": "pagefind --site dist && node scripts/warm-image-cache.mjs",
     "build:github-pages": "GITHUB_PAGES=true astro build && pagefind --site dist",
     "create": "node scripts/create-content.js",
     "update-post": "node scripts/update-post.js",

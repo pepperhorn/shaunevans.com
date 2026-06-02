@@ -1,0 +1,70 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import ProductCard from "../../../components/shop/ProductCard.tsx";
+import { Badge } from "../../../components/ui/badge.tsx";
+import { getProducts } from "@/lib/catalog";
+
+export async function getStaticPaths() {
+  const { getProducts } = await import("@/lib/catalog");
+  const products = await getProducts();
+  const categories = Array.from(new Set(products.map((p) => p.category)));
+  return categories.map((category) => ({
+    params: { category },
+  }));
+}
+
+const { category } = Astro.params;
+const allProducts = await getProducts();
+const products = allProducts.filter((p) => p.category === category);
+
+const categoryLabel: Record<string, string> = {
+  "sheet-music": "Sheet Music",
+  recordings: "Recordings",
+  merch: "Merch",
+  courses: "Courses",
+};
+
+const label = categoryLabel[category!] ?? category!;
+const pageTitle = `${label} | ShaunEvans.com`;
+const description = `${label} from saxophonist and composer Shaun Evans. ${products.length} items.`;
+---
+
+<BaseLayout
+  title={pageTitle}
+  description={description}
+  site_name="ShaunEvans.com"
+>
+  <div class="mx-auto w-full max-w-7xl px-6 py-10 max-sm:px-4">
+    <nav class="category-breadcrumb mb-6 text-sm text-gray-500 dark:text-gray-400">
+      <a href="/shop/" class="hover:text-gray-900 dark:hover:text-[rgb(245,245,245)]">Shop</a>
+      <span class="mx-2">/</span>
+      <span class="text-gray-900 dark:text-[rgb(245,245,245)]">{label}</span>
+    </nav>
+
+    <header class="category-header mb-10 space-y-3">
+      <Badge variant="outline" className="text-xs">Shop · {label}</Badge>
+      <h1
+        class="category-title font-overpass-mono text-4xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)] sm:text-5xl"
+      >
+        {label}
+      </h1>
+      <p class="category-count text-sm text-gray-500 dark:text-gray-400">
+        {products.length} item{products.length === 1 ? "" : "s"}
+      </p>
+    </header>
+
+    {
+      products.length > 0 ? (
+        <div class="category-grid grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {products.map((product) => (
+            <ProductCard product={product} client:load />
+          ))}
+        </div>
+      ) : (
+        <p class="category-empty py-12 text-center text-gray-500 dark:text-gray-400">
+          Nothing here yet — check back soon.
+        </p>
+      )
+    }
+  </div>
+</BaseLayout>

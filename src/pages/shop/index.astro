@@ -53,25 +53,34 @@ const description =
     </header>
 
     {
-      categories.map((cat) => (
-        <section id={cat} class="mb-12 scroll-mt-20">
-          <div class="mb-4 flex items-baseline justify-between">
-            <h2 class="font-overpass-mono text-xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)]">
-              {categoryLabel[cat]}
-            </h2>
-            <span class="text-xs text-gray-500 dark:text-gray-400">
-              {products.filter((p) => p.category === cat).length} items
-            </span>
-          </div>
-          <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {products
-              .filter((p) => p.category === cat)
-              .map((product) => (
-                <ProductCard product={product} client:load />
+      categories.map((cat) => {
+        const inCategory = products.filter((p) => p.category === cat);
+        return (
+          <section id={cat} class="category-row mb-12 scroll-mt-20">
+            <div class="category-row-header mb-4 flex items-baseline justify-between gap-4">
+              <h2 class="category-title font-overpass-mono text-xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)]">
+                {categoryLabel[cat]}
+              </h2>
+              <a
+                href={`/shop/c/${cat}/`}
+                class="category-all-link group inline-flex items-baseline gap-1 whitespace-nowrap font-overpass-mono text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-[rgb(245,245,245)]"
+              >
+                All ({inCategory.length})
+                <span class="category-all-arrow transition-transform group-hover:translate-x-0.5">›</span>
+              </a>
+            </div>
+            <div
+              class="category-scroll -mx-6 flex snap-x snap-mandatory gap-6 overflow-x-auto px-6 pb-4 max-sm:-mx-4 max-sm:px-4"
+            >
+              {inCategory.map((product) => (
+                <div class="product-card-slot w-[260px] shrink-0 snap-start sm:w-[280px]">
+                  <ProductCard product={product} client:load />
+                </div>
               ))}
-          </div>
-        </section>
-      ))
+            </div>
+          </section>
+        );
+      })
     }
   </div>
 </BaseLayout>

@@ -28,8 +28,11 @@ const featured = allPosts.filter((p) => {
   return categoryFolderFor(p) !== null;
 });
 
+// WebP, not AVIF: cold-encode AVIF at 1920×1080 takes ~11s on the Directus
+// host; WebP is ~1s for an ~8KB size penalty. After cache warm-up both serve
+// sub-300ms, but WebP keeps the cold hit bounded after the asset TTL expires.
 const directusTransform = (url: string, w: number, h: number) =>
-  `${url}?width=${w}&height=${h}&fit=cover&format=avif&quality=65`;
+  `${url}?width=${w}&height=${h}&fit=cover&format=webp&quality=65`;
 
 const allImages = {
   large: [] as string[],

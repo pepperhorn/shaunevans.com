@@ -266,6 +266,25 @@ const PAGE_FIELDS = [
   "blocks.background",
   "blocks.hide_block",
   "blocks.item.*",
+  // block_form: pull the related form + its fields so the renderer can build the UI.
+  "blocks.item:block_form.form.id",
+  "blocks.item:block_form.form.title",
+  "blocks.item:block_form.form.submit_label",
+  "blocks.item:block_form.form.on_success",
+  "blocks.item:block_form.form.success_message",
+  "blocks.item:block_form.form.success_redirect_url",
+  "blocks.item:block_form.form.is_active",
+  "blocks.item:block_form.form.fields.id",
+  "blocks.item:block_form.form.fields.name",
+  "blocks.item:block_form.form.fields.type",
+  "blocks.item:block_form.form.fields.label",
+  "blocks.item:block_form.form.fields.placeholder",
+  "blocks.item:block_form.form.fields.help",
+  "blocks.item:block_form.form.fields.validation",
+  "blocks.item:block_form.form.fields.width",
+  "blocks.item:block_form.form.fields.choices",
+  "blocks.item:block_form.form.fields.required",
+  "blocks.item:block_form.form.fields.sort",
 ].join(",");
 
 function mapPage(p: RawPage): CmsPage {
