@@ -6,7 +6,9 @@ import {
   Heart,
   ListOrdered,
   LogIn,
+  Lock,
   Music,
+  PlayCircle,
   ShoppingBag,
   Store,
 } from "lucide-react";
@@ -22,8 +24,12 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import type { Series } from "@/data/series";
 
 const CATEGORIES = [
   { slug: "sheet-music", label: "Sheet Music", icon: Music },
@@ -38,7 +44,7 @@ const ACCOUNT = [
   { href: "#", label: "Wishlist", icon: Heart },
 ];
 
-export default function ShopSidebar() {
+export default function ShopSidebar({ series = [] }: { series?: Series[] }) {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
@@ -69,6 +75,37 @@ export default function ShopSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Learning</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Learning">
+                  <a href="/learn/">
+                    <GraduationCap />
+                    <span>Learning</span>
+                  </a>
+                </SidebarMenuButton>
+                {series.length > 0 && (
+                  <SidebarMenuSub>
+                    {series.map((s) => (
+                      <SidebarMenuSubItem key={s.id}>
+                        <SidebarMenuSubButton href={`/learn/series/${s.slug}/`}>
+                          <PlayCircle />
+                          <span>{s.title}</span>
+                          {s.access_tier === "paid" && (
+                            <Lock className="ml-auto !size-3 text-muted-foreground" />
+                          )}
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    ))}
+                  </SidebarMenuSub>
+                )}
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

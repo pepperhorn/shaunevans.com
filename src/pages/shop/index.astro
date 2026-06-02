@@ -3,9 +3,13 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
 import ProductCard from "../../components/shop/ProductCard.tsx";
 import ShopShell from "../../components/shop/ShopShell.tsx";
 import { Badge } from "../../components/ui/badge.tsx";
-import { getProducts, getGlobals } from "@/lib/catalog";
+import { getProducts, getGlobals, getSeries } from "@/lib/catalog";
 
-const [products, globals] = await Promise.all([getProducts(), getGlobals()]);
+const [products, globals, series] = await Promise.all([
+  getProducts(),
+  getGlobals(),
+  getSeries(),
+]);
 
 // Tailwind JIT needs literal class names — map clamped values to known classes.
 const LG_COLS: Record<number, string> = {
@@ -36,7 +40,7 @@ const description =
   description={description}
   site_name="ShaunEvans.com"
 >
-  <ShopShell client:load>
+  <ShopShell series={series} client:load>
     <div class="mx-auto w-full max-w-7xl px-6 py-10 max-sm:px-4">
       <header class="mb-10 space-y-4">
         <Badge variant="outline" className="text-xs">Shop</Badge>
