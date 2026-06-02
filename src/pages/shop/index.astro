@@ -1,0 +1,84 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ProductCard from "../../components/shop/ProductCard.tsx";
+import ShopShell from "../../components/shop/ShopShell.tsx";
+import { Badge } from "../../components/ui/badge.tsx";
+import { getProducts, getGlobals, getSeries } from "@/lib/catalog";
+
+const [products, globals, series] = await Promise.all([
+  getProducts(),
+  getGlobals(),
+  getSeries(),
+]);
+
+// Tailwind JIT needs literal class names — map clamped values to known classes.
+const LG_COLS: Record<number, string> = {
+  1: "lg:grid-cols-1",
+  2: "lg:grid-cols-2",
+  3: "lg:grid-cols-3",
+  4: "lg:grid-cols-4",
+  5: "lg:grid-cols-5",
+  6: "lg:grid-cols-6",
+};
+const cols = Math.min(6, Math.max(1, globals.homeCategoryItems));
+const lgColsClass = LG_COLS[cols];
+const categories = Array.from(new Set(products.map((p) => p.category)));
+const categoryLabel: Record<string, string> = {
+  "sheet-music": "Sheet Music",
+  recordings: "Recordings",
+  merch: "Merch",
+  courses: "Courses",
+};
+
+const pageTitle = "Shop | ShaunEvans.com";
+const description =
+  "Sheet music, recordings, courses, and merch from saxophonist and composer Shaun Evans.";
+---
+
+<BaseLayout
+  title={pageTitle}
+  description={description}
+  site_name="ShaunEvans.com"
+>
+  <ShopShell series={series} client:load>
+    <div class="mx-auto w-full max-w-7xl px-6 py-10 max-sm:px-4">
+      <header class="mb-10 space-y-4">
+        <Badge variant="outline" className="text-xs">Shop</Badge>
+        <h1
+          class="font-overpass-mono text-4xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)] sm:text-5xl"
+        >
+          Sheet music, records, courses.
+        </h1>
+        <p
+          class="max-w-2xl text-base text-gray-700 dark:text-gray-300 sm:text-lg"
+        >
+          Original scores, recordings, and self-paced courses, plus the
+          occasional signed print. Everything ships from Singapore; digital
+          items download instantly after checkout.
+        </p>
+      </header>
+
+      {
+        categories.map((cat) => (
+          <section id={cat} class="mb-12 scroll-mt-20">
+            <div class="mb-4 flex items-baseline justify-between">
+              <h2 class="font-overpass-mono text-xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)]">
+                {categoryLabel[cat]}
+              </h2>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {products.filter((p) => p.category === cat).length} items
+              </span>
+            </div>
+            <div class={`grid grid-cols-1 gap-6 sm:grid-cols-2 ${lgColsClass}`}>
+              {products
+                .filter((p) => p.category === cat)
+                .map((product) => (
+                  <ProductCard product={product} client:load />
+                ))}
+            </div>
+          </section>
+        ))
+      }
+    </div>
+  </ShopShell>
+</BaseLayout>

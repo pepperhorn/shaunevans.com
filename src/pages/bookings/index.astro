@@ -1,0 +1,71 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import LessonCard from "../../components/bookings/LessonCard.tsx";
+import BookingForm from "../../components/bookings/BookingForm.tsx";
+import { Badge } from "../../components/ui/badge.tsx";
+import { getLessons } from "@/lib/catalog";
+
+const lessons = await getLessons();
+
+const pageTitle = "Bookings & Lessons | ShaunEvans.com";
+const description =
+  "Book a sax, composition, or arranging lesson with Shaun Evans — single sessions, packages, and mentorship.";
+---
+
+<BaseLayout
+  title={pageTitle}
+  description={description}
+  site_name="ShaunEvans.com"
+>
+  <div class="mx-auto w-full max-w-7xl px-6 py-10 max-sm:px-4">
+    <header class="mb-12 max-w-3xl space-y-4">
+      <Badge variant="outline" className="text-xs">Bookings</Badge>
+      <h1
+        class="font-overpass-mono text-4xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)] sm:text-5xl"
+      >
+        Lessons, mentorship, and intensives.
+      </h1>
+      <p class="text-base text-gray-700 dark:text-gray-300 sm:text-lg">
+        Choose a package below and send a booking request. Shaun will confirm a
+        time and send a calendar invite within two business days. Lessons run
+        over Zoom unless otherwise noted.
+      </p>
+    </header>
+
+    <section class="mb-16">
+      <div class="mb-6 flex items-baseline justify-between">
+        <h2
+          class="font-overpass-mono text-xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)]"
+        >
+          Packages
+        </h2>
+        <span class="text-xs text-gray-500 dark:text-gray-400">
+          {lessons.length} options
+        </span>
+      </div>
+      <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+        {lessons.map((lesson) => <LessonCard lesson={lesson} client:load />)}
+      </div>
+    </section>
+
+    <section class="mx-auto max-w-2xl">
+      <BookingForm lessons={lessons} client:load />
+    </section>
+
+    <section class="mx-auto mt-16 max-w-2xl space-y-3 text-sm text-gray-700 dark:text-gray-300">
+      <h2
+        class="font-overpass-mono text-lg tracking-tight text-gray-900 dark:text-[rgb(245,245,245)]"
+      >
+        How it works
+      </h2>
+      <ol class="ml-4 list-decimal space-y-2">
+        <li>Pick a package and submit the form.</li>
+        <li>Shaun replies within two business days with proposed times.</li>
+        <li>
+          You confirm a slot and pay via the link in the confirmation email.
+        </li>
+        <li>You get a calendar invite with the Zoom link or studio address.</li>
+      </ol>
+    </section>
+  </div>
+</BaseLayout>
