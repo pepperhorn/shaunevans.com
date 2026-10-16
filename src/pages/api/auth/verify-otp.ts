@@ -1,47 +1,80 @@
 import type { APIRoute } from "astro";
-import { verifyOtp } from "@/lib/auth";
+import {
+  getOtpSession,
+  getUserById,
+  markUserVerified,
+  verifyCode,
+  type SessionOtp,
+  type SessionUser,
+} from "@/lib/auth";
 
 export const prerender = false;
 
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+const UNAVAILABLE = { error: "Sign-in is temporarily unavailable. Please try again." };
+
 export const POST: APIRoute = async ({ request, session }) => {
+  let body: { email?: string; code?: string };
   try {
-    const body = (await request.json()) as { email?: string; code?: string };
-    const email = (body.email ?? "").trim().toLowerCase();
-    const code = (body.code ?? "").trim();
-    if (!email || !code) {
-      return new Response(JSON.stringify({ error: "email and code required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    const user = await verifyOtp(email, code);
-    if (!user) {
-      return new Response(JSON.stringify({ error: "invalid or expired code" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (!session) {
-      return new Response(JSON.stringify({ error: "sessions not enabled" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    await session.regenerate();
-    await session.set("user", { id: user.id, email: user.email, name: user.name });
-
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        user: { user_id: user.id, email: user.email, name: user.name },
-      }),
-      { headers: { "Content-Type": "application/json" } },
-    );
-  } catch (err) {
-    return new Response(
-      JSON.stringify({ error: (err as Error).message }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
+    body = (await request.json()) as { email?: string; code?: string };
+  } catch {
+    return json({ error: "invalid request body" }, 400);
   }
+  const email = (typeof body.email === "string" ? body.email : "").trim().toLowerCase();
+  const code = (typeof body.code === "string" ? body.code : "").replace(/\D/g, "");
+  if (!email || !code) {
+    return json({ error: "email and code required" }, 400);
+  }
+  if (!session) {
+    return json({ error: "sessions not enabled" }, 500);
+  }
+
+  let verified: { token: string; expiresAt: string } | null;
+  try {
+    verified = await verifyCode(email, code, request.headers.get("user-agent") ?? undefined);
+  } catch (err) {
+    // 403 = origin refused (missing/wrong OTP_AUTH_CALLER_KEY) — our config, not the user's code.
+    console.error("[auth] verify-otp transport failure:", err);
+    return json(UNAVAILABLE, 500);
+  }
+  // Uniform failure for wrong / expired / burned / unknown.
+  if (!verified) return json({ error: "invalid or expired code" }, 401);
+
+  // From here on the code is already consumed — failures need a fresh code.
+  let user: SessionUser;
+  try {
+    const otpSession = await getOtpSession(verified.token);
+    if (!otpSession?.principalId) throw new Error("no principal on fresh OTP session");
+    const row = await getUserById(otpSession.principalId);
+    if (!row) throw new Error(`users row ${otpSession.principalId} not readable`);
+    user = { id: Number(row.id), email: row.email, name: row.name ?? null };
+    try {
+      await markUserVerified(row.id);
+    } catch (err) {
+      console.error("[auth] verify-otp: users PATCH failed (continuing):", err);
+    }
+  } catch (err) {
+    console.error("[auth] verify-otp post-verify failure (code already consumed):", err);
+    return json(UNAVAILABLE, 500);
+  }
+
+  await session.regenerate();
+  session.set("user", user);
+  const otp: SessionOtp = {
+    token: verified.token,
+    expiresAt: verified.expiresAt,
+    lastCheckedAt: Date.now(),
+  };
+  session.set("otp", otp);
+
+  return json({
+    ok: true,
+    user: { user_id: user.id, email: user.email, name: user.name },
+  });
 };

@@ -61,7 +61,7 @@ export async function fetchProducts(): Promise<Product[]> {
     "filter[status][_eq]": "published",
     "fields[]":
       "id,title,slug,tagline,description,price,image,category,featured,square_checkout_link",
-    "sort[]": "sort,title",
+    sort: "sort,title",
     limit: "200",
   });
   return items.map((p) => ({
@@ -124,15 +124,29 @@ type RawSeries = {
   access_tier: string | null;
   description: string | null;
   cover_image: string | null;
-  items?: Array<{ id: string }> | null;
 };
 
 import type { Series } from "@/data/series";
 
-const SERIES_FIELDS =
-  "id,title,slug,access_tier,description,cover_image,items.id";
+const SERIES_FIELDS = "id,title,slug,access_tier,description,cover_image";
 
-function mapSeries(s: RawSeries): Series {
+// `series` has no o2m alias back to `learning`, so item counts come from a
+// grouped aggregate on `learning.series`.
+async function fetchLearningCounts(): Promise<Map<string, number>> {
+  const rows = await directusFetch<Array<{ series: string | null; count: { id: string | number } }>>(
+    "/items/learning",
+    {
+      "filter[status][_eq]": "published",
+      "aggregate[count]": "id",
+      "groupBy[]": "series",
+    },
+  );
+  return new Map(
+    rows.filter((r) => r.series).map((r) => [String(r.series), Number(r.count.id)]),
+  );
+}
+
+function mapSeries(s: RawSeries, counts?: Map<string, number>): Series {
   return {
     id: s.id,
     title: s.title,
@@ -140,7 +154,7 @@ function mapSeries(s: RawSeries): Series {
     access_tier: (s.access_tier ?? "free") as Series["access_tier"],
     description: s.description ?? "",
     coverImage: s.cover_image,
-    itemCount: Array.isArray(s.items) ? s.items.length : 0,
+    itemCount: counts?.get(String(s.id)) ?? 0,
   };
 }
 
@@ -148,10 +162,11 @@ export async function fetchSeries(): Promise<Series[]> {
   const items = await directusFetch<RawSeries[]>("/items/series", {
     "filter[status][_eq]": "published",
     "fields[]": SERIES_FIELDS,
-    "sort[]": "sort,title",
+    sort: "sort,title",
     limit: "50",
   });
-  return items.map(mapSeries);
+  const counts = await fetchLearningCounts();
+  return items.map((s) => mapSeries(s, counts));
 }
 
 export async function fetchSeriesBySlug(slug: string): Promise<Series | null> {
@@ -161,7 +176,7 @@ export async function fetchSeriesBySlug(slug: string): Promise<Series | null> {
     "fields[]": SERIES_FIELDS,
     limit: "1",
   });
-  return items[0] ? mapSeries(items[0]) : null;
+  return items[0] ? mapSeries(items[0], await fetchLearningCounts()) : null;
 }
 
 // ── Learning ──────────────────────────────────────────────────────────────
@@ -250,7 +265,7 @@ export async function fetchLearning(): Promise<LearningItem[]> {
   const items = await directusFetch<RawLearning[]>("/items/learning", {
     "filter[status][_eq]": "published",
     "fields[]": LEARNING_LIST_FIELDS,
-    "sort[]": "sort,title",
+    sort: "sort,title",
     limit: "200",
   });
   return items.map(mapLearningItem);
@@ -261,7 +276,7 @@ export async function fetchLearningBySeries(seriesId: string): Promise<LearningI
     "filter[status][_eq]": "published",
     "filter[series][_eq]": seriesId,
     "fields[]": LEARNING_LIST_FIELDS,
-    "sort[]": "series_number,sort,title",
+    sort: "series_number,sort,title",
     limit: "200",
   });
   return items.map(mapLearningItem);
@@ -330,7 +345,7 @@ export async function fetchLessons(): Promise<Lesson[]> {
     "filter[status][_eq]": "published",
     "fields[]":
       "id,name,slug,price,duration,format,tagline,description,includes,popular",
-    "sort[]": "sort,id",
+    sort: "sort,id",
     limit: "50",
   });
   return items.map((l) => ({
@@ -420,7 +435,7 @@ export async function fetchPosts(): Promise<CmsPost[]> {
   const items = await directusFetch<RawPost[]>("/items/posts", {
     "filter[status][_eq]": "published",
     "fields[]": POST_FIELDS,
-    "sort[]": "-published_at",
+    sort: "-published_at",
     limit: "500",
   });
   return items.map(mapPost);
@@ -431,7 +446,7 @@ export async function fetchPostsByTag(tagSlug: string): Promise<CmsPost[]> {
     "filter[status][_eq]": "published",
     "filter[post_tags][post_tags_id][slug][_eq]": tagSlug,
     "fields[]": POST_FIELDS,
-    "sort[]": "-published_at",
+    sort: "-published_at",
     limit: "500",
   });
   return items.map(mapPost);
@@ -552,7 +567,7 @@ export async function fetchPages(): Promise<CmsPage[]> {
   const items = await directusFetch<RawPage[]>("/items/pages", {
     "filter[status][_eq]": "published",
     "fields[]": PAGE_FIELDS,
-    "sort[]": "sort,permalink",
+    sort: "sort,permalink",
     limit: "200",
   });
   return items.map(mapPage);
