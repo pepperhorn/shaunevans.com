@@ -1,0 +1,123 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { Badge } from "../../../components/ui/badge.tsx";
+import { getSeries, getSeriesBySlug, getLearningBySeries } from "@/lib/catalog";
+import { assetUrl } from "@/lib/directus";
+import { Lock, PlayCircle } from "lucide-react";
+
+export async function getStaticPaths() {
+  const { getSeries } = await import("@/lib/catalog");
+  const all = await getSeries();
+  return all.map((s) => ({ params: { slug: s.slug } }));
+}
+
+const { slug } = Astro.params;
+const series = await getSeriesBySlug(slug!);
+
+if (!series) {
+  return Astro.redirect("/learn/", 302);
+}
+
+const items = await getLearningBySeries(series.id);
+
+const accessTierBadge: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
+  free: { label: "Free", variant: "secondary" },
+  paid: { label: "Paid", variant: "default" },
+  mixed: { label: "Mixed", variant: "outline" },
+};
+const tier = accessTierBadge[series.access_tier];
+
+const pageTitle = `${series.title} | Learn | ShaunEvans.com`;
+const description = series.description || `Learning series: ${series.title}.`;
+---
+
+<BaseLayout title={pageTitle} description={description} site_name="ShaunEvans.com">
+  <div class="series-page mx-auto w-full max-w-7xl px-6 py-10 max-sm:px-4">
+    <nav class="series-breadcrumb mb-6 text-sm text-gray-500 dark:text-gray-400">
+      <a href="/learn/" class="hover:text-gray-900 dark:hover:text-[rgb(245,245,245)]">Learn</a>
+      <span class="mx-2">/</span>
+      <span class="text-gray-900 dark:text-[rgb(245,245,245)]">Series</span>
+      <span class="mx-2">/</span>
+      <span class="text-gray-900 dark:text-[rgb(245,245,245)]">{series.title}</span>
+    </nav>
+
+    <header class="series-hero mb-10 grid grid-cols-1 gap-8 md:grid-cols-[1fr_2fr] md:items-center">
+      {series.coverImage && (
+        <div class="series-cover overflow-hidden rounded-xl bg-muted shadow">
+          <img
+            src={assetUrl(series.coverImage, "")}
+            alt={series.title}
+            class="aspect-video h-full w-full object-cover"
+          />
+        </div>
+      )}
+      <div class="series-meta space-y-4">
+        <div class="flex items-center gap-2">
+          <Badge variant={tier.variant} className="text-xs">{tier.label}</Badge>
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+            {items.length} item{items.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        <h1
+          class="series-title font-overpass-mono text-3xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)] sm:text-4xl"
+        >
+          {series.title}
+        </h1>
+        {series.description && (
+          <p class="series-description text-base text-gray-700 dark:text-gray-300">
+            {series.description}
+          </p>
+        )}
+      </div>
+    </header>
+
+    {
+      items.length > 0 ? (
+        <section class="series-items">
+          <h2 class="series-items-heading mb-6 font-overpass-mono text-2xl text-gray-900 dark:text-[rgb(245,245,245)]">
+            Episodes
+          </h2>
+          <ol class="series-items-list space-y-3">
+            {items.map((item, idx) => {
+              const num = item.seriesNumber ?? idx + 1;
+              const isLocked = item.isProtected || item.accessTier === "paid";
+              return (
+                <li class="series-item">
+                  <a
+                    href={`/learn/${item.slug}/`}
+                    class="series-item-link group flex items-start gap-4 rounded-lg border border-border/60 bg-card p-4 transition-shadow hover:shadow"
+                  >
+                    <div class="series-item-num flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted font-overpass-mono text-sm font-semibold tabular-nums">
+                      {num}
+                    </div>
+                    <div class="series-item-body min-w-0 flex-1">
+                      <div class="flex items-center gap-2">
+                        <h3 class="series-item-title flex-1 truncate font-medium leading-tight group-hover:underline">
+                          {item.title}
+                        </h3>
+                        {isLocked ? (
+                          <Lock size={16} className="text-muted-foreground" />
+                        ) : (
+                          <PlayCircle size={16} className="text-muted-foreground" />
+                        )}
+                      </div>
+                      {item.summary && (
+                        <p class="series-item-summary mt-1 line-clamp-2 text-sm text-muted-foreground">
+                          {item.summary}
+                        </p>
+                      )}
+                    </div>
+                  </a>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      ) : (
+        <p class="series-empty py-12 text-center text-gray-500 dark:text-gray-400">
+          No episodes yet — check back soon.
+        </p>
+      )
+    }
+  </div>
+</BaseLayout>

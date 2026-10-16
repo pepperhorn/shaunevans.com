@@ -122,23 +122,207 @@ type RawSeries = {
   title: string;
   slug: string;
   access_tier: string | null;
+  description: string | null;
+  cover_image: string | null;
+  items?: Array<{ id: string }> | null;
 };
 
 import type { Series } from "@/data/series";
 
-export async function fetchSeries(): Promise<Series[]> {
-  const items = await directusFetch<RawSeries[]>("/items/series", {
-    "filter[status][_eq]": "published",
-    "fields[]": "id,title,slug,access_tier",
-    "sort[]": "sort,title",
-    limit: "50",
-  });
-  return items.map((s) => ({
+const SERIES_FIELDS =
+  "id,title,slug,access_tier,description,cover_image,items.id";
+
+function mapSeries(s: RawSeries): Series {
+  return {
     id: s.id,
     title: s.title,
     slug: s.slug,
     access_tier: (s.access_tier ?? "free") as Series["access_tier"],
-  }));
+    description: s.description ?? "",
+    coverImage: s.cover_image,
+    itemCount: Array.isArray(s.items) ? s.items.length : 0,
+  };
+}
+
+export async function fetchSeries(): Promise<Series[]> {
+  const items = await directusFetch<RawSeries[]>("/items/series", {
+    "filter[status][_eq]": "published",
+    "fields[]": SERIES_FIELDS,
+    "sort[]": "sort,title",
+    limit: "50",
+  });
+  return items.map(mapSeries);
+}
+
+export async function fetchSeriesBySlug(slug: string): Promise<Series | null> {
+  const items = await directusFetch<RawSeries[]>("/items/series", {
+    "filter[status][_eq]": "published",
+    "filter[slug][_eq]": slug,
+    "fields[]": SERIES_FIELDS,
+    limit: "1",
+  });
+  return items[0] ? mapSeries(items[0]) : null;
+}
+
+// ── Learning ──────────────────────────────────────────────────────────────
+
+export type LearningItem = {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string;
+  coverImage: string | null;
+  accessTier: "free" | "paid";
+  price: number | null;
+  isProtected: boolean;
+  protectedDetails: string;
+  videoPreview: string | null;
+  seriesId: string | null;
+  seriesSlug: string | null;
+  seriesTitle: string | null;
+  seriesNumber: number | null;
+};
+
+export type LearningDetail = LearningItem & {
+  blocks: CmsBlock[];
+};
+
+type RawLearning = {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string | null;
+  cover_image: string | null;
+  access_tier: string | null;
+  price: string | number | null;
+  is_protected: boolean | null;
+  protected_details: string | null;
+  video_preview: string | null;
+  series_number: number | null;
+  series: {
+    id: string;
+    slug: string;
+    title: string;
+  } | string | null;
+};
+
+type RawLearningDetail = RawLearning & {
+  blocks: RawBlock[] | null;
+};
+
+const LEARNING_LIST_FIELDS = [
+  "id",
+  "slug",
+  "title",
+  "summary",
+  "cover_image",
+  "access_tier",
+  "price",
+  "is_protected",
+  "series_number",
+  "series.id",
+  "series.slug",
+  "series.title",
+].join(",");
+
+function mapLearningItem(l: RawLearning): LearningItem {
+  const series = l.series && typeof l.series === "object" ? l.series : null;
+  const price = l.price == null ? null : Number(l.price);
+  return {
+    id: l.id,
+    slug: l.slug,
+    title: l.title,
+    summary: l.summary ?? "",
+    coverImage: l.cover_image,
+    accessTier: (l.access_tier ?? "free") as "free" | "paid",
+    price: price != null && Number.isFinite(price) ? price : null,
+    isProtected: Boolean(l.is_protected),
+    protectedDetails: "",
+    videoPreview: null,
+    seriesId: series?.id ?? null,
+    seriesSlug: series?.slug ?? null,
+    seriesTitle: series?.title ?? null,
+    seriesNumber: l.series_number ?? null,
+  };
+}
+
+export async function fetchLearning(): Promise<LearningItem[]> {
+  const items = await directusFetch<RawLearning[]>("/items/learning", {
+    "filter[status][_eq]": "published",
+    "fields[]": LEARNING_LIST_FIELDS,
+    "sort[]": "sort,title",
+    limit: "200",
+  });
+  return items.map(mapLearningItem);
+}
+
+export async function fetchLearningBySeries(seriesId: string): Promise<LearningItem[]> {
+  const items = await directusFetch<RawLearning[]>("/items/learning", {
+    "filter[status][_eq]": "published",
+    "filter[series][_eq]": seriesId,
+    "fields[]": LEARNING_LIST_FIELDS,
+    "sort[]": "series_number,sort,title",
+    limit: "200",
+  });
+  return items.map(mapLearningItem);
+}
+
+export async function fetchLearningBySlug(slug: string): Promise<LearningDetail | null> {
+  const fields = [
+    LEARNING_LIST_FIELDS,
+    "protected_details",
+    "video_preview",
+    "blocks.id",
+    "blocks.sort",
+    "blocks.collection",
+    "blocks.item.*",
+    "blocks.item:block_form.form.id",
+    "blocks.item:block_form.form.title",
+    "blocks.item:block_form.form.submit_label",
+    "blocks.item:block_form.form.on_success",
+    "blocks.item:block_form.form.success_message",
+    "blocks.item:block_form.form.success_redirect_url",
+    "blocks.item:block_form.form.is_active",
+    "blocks.item:block_form.form.fields.id",
+    "blocks.item:block_form.form.fields.name",
+    "blocks.item:block_form.form.fields.type",
+    "blocks.item:block_form.form.fields.label",
+    "blocks.item:block_form.form.fields.placeholder",
+    "blocks.item:block_form.form.fields.help",
+    "blocks.item:block_form.form.fields.validation",
+    "blocks.item:block_form.form.fields.width",
+    "blocks.item:block_form.form.fields.choices",
+    "blocks.item:block_form.form.fields.required",
+    "blocks.item:block_form.form.fields.sort",
+  ].join(",");
+
+  const items = await directusFetch<RawLearningDetail[]>("/items/learning", {
+    "filter[status][_eq]": "published",
+    "filter[slug][_eq]": slug,
+    "fields[]": fields,
+    limit: "1",
+  });
+  const raw = items[0];
+  if (!raw) return null;
+
+  const base = mapLearningItem(raw);
+  const blocks: CmsBlock[] = (raw.blocks ?? [])
+    .slice()
+    .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+    .map((b) => ({
+      id: b.id,
+      collection: b.collection,
+      background: b.background,
+      hideBlock: b.hide_block ?? false,
+      item: typeof b.item === "object" && b.item !== null ? b.item : {},
+    }));
+
+  return {
+    ...base,
+    protectedDetails: raw.protected_details ?? "",
+    videoPreview: raw.video_preview ?? null,
+    blocks,
+  };
 }
 
 export async function fetchLessons(): Promise<Lesson[]> {

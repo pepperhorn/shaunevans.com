@@ -7,7 +7,7 @@ import CartSheet from "./shop/CartSheet.tsx";
 const { is404Page = false } = Astro.props;
 ---
 
-<header class="mb-[20px] mt-[-10px]">
+<header class="sticky top-0 z-30 -mx-8 px-8 py-[10px] md:-mx-16 md:px-16 mb-[20px] -mt-8 md:-mt-8 pt-8 bg-[rgb(244,242,238)]/95 backdrop-blur supports-[backdrop-filter]:bg-[rgb(244,242,238)]/80 dark:bg-[rgb(34,33,37)]/95 dark:supports-[backdrop-filter]:bg-[rgb(34,33,37)]/80">
   <nav class="flex items-center justify-between w-full h-[30px]">
     {
       !is404Page && (

@@ -1,12 +1,7 @@
 "use client";
 
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import ShopSidebar from "@/components/shop/ShopSidebar";
-import { Separator } from "@/components/ui/separator";
 import type { Series } from "@/data/series";
 
 export default function ShopShell({
@@ -17,18 +12,12 @@ export default function ShopShell({
   series?: Series[];
 }) {
   return (
-    <SidebarProvider>
+    // Start collapsed by default → users see a persistent icon strip on the
+    // left, which they can tap to navigate or expand via tapping the trigger
+    // inside the sidebar itself.
+    <SidebarProvider defaultOpen={false}>
       <ShopSidebar series={series} />
-      <SidebarInset>
-        <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <span className="font-overpass-mono text-sm text-muted-foreground">
-            Shop
-          </span>
-        </header>
-        {children}
-      </SidebarInset>
+      <SidebarInset>{children}</SidebarInset>
     </SidebarProvider>
   );
 }

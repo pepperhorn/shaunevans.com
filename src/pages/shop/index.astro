@@ -61,7 +61,8 @@ const description =
                 </a>
               </div>
               <div
-                class="category-scroll -mx-6 flex snap-x snap-mandatory gap-6 overflow-x-auto px-6 pb-4 max-sm:-mx-4 max-sm:px-4"
+                class="category-scroll -mx-6 flex snap-x gap-6 overflow-x-auto overflow-y-hidden px-6 pb-4 max-sm:-mx-4 max-sm:px-4"
+                style="overscroll-behavior-x: contain; will-change: scroll-position;"
               >
                 {inCategory.map((product) => (
                   <div class="product-card-slot w-[260px] shrink-0 snap-start sm:w-[280px]">

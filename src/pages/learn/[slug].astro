@@ -1,0 +1,157 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import CmsPageRenderer from "../../components/CmsPageRenderer.astro";
+import { Badge } from "../../components/ui/badge.tsx";
+import { Lock } from "lucide-react";
+import { getLearning, getLearningBySlug } from "@/lib/catalog";
+import { assetUrl } from "@/lib/directus";
+
+export async function getStaticPaths() {
+  const { getLearning } = await import("@/lib/catalog");
+  const all = await getLearning();
+  return all.map((l) => ({ params: { slug: l.slug } }));
+}
+
+const { slug } = Astro.params;
+const item = await getLearningBySlug(slug!);
+
+if (!item) {
+  return Astro.redirect("/learn/", 302);
+}
+
+// V1 access check: no per-user entitlement wired yet. Paid + protected items
+// always render the teaser; free items always render the blocks. Once
+// product-ownership lookup against the signed-in user's orders is wired,
+// flip this to: locked = item.isProtected && !userOwnsAnyUnlockProduct.
+const locked = item.isProtected && item.accessTier === "paid";
+
+const pageTitle = `${item.title} | Learn | ShaunEvans.com`;
+const description = item.summary || `Learning item: ${item.title}.`;
+
+// Very light "paragraph + line break" Markdown — protected_details is short
+// teaser copy, not full prose. If we ever need real Markdown features
+// (lists, links, headings) swap to `marked` / `remark` here.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+const protectedHtml = item.protectedDetails
+  ? item.protectedDetails
+      .split(/\n{2,}/)
+      .map((para) => `<p>${escapeHtml(para).replace(/\n/g, "<br>")}</p>`)
+      .join("")
+  : "";
+---
+
+<BaseLayout title={pageTitle} description={description} site_name="ShaunEvans.com">
+  <div class="learn-detail mx-auto w-full max-w-4xl px-6 py-10 max-sm:px-4">
+    <nav class="learn-breadcrumb mb-6 text-sm text-gray-500 dark:text-gray-400">
+      <a href="/learn/" class="hover:text-gray-900 dark:hover:text-[rgb(245,245,245)]">Learn</a>
+      {
+        item.seriesSlug && (
+          <>
+            <span class="mx-2">/</span>
+            <a
+              href={`/learn/series/${item.seriesSlug}/`}
+              class="hover:text-gray-900 dark:hover:text-[rgb(245,245,245)]"
+            >
+              {item.seriesTitle}
+            </a>
+          </>
+        )
+      }
+      <span class="mx-2">/</span>
+      <span class="text-gray-900 dark:text-[rgb(245,245,245)]">{item.title}</span>
+    </nav>
+
+    <header class="learn-detail-header mb-8 space-y-4">
+      <div class="flex flex-wrap items-center gap-2">
+        <Badge
+          variant={item.accessTier === "free" ? "secondary" : "default"}
+          className="text-xs"
+        >
+          {item.accessTier === "free" ? "Free" : "Paid"}
+        </Badge>
+        {item.seriesNumber != null && item.seriesTitle && (
+          <Badge variant="outline" className="text-xs">
+            {item.seriesTitle} · #{item.seriesNumber}
+          </Badge>
+        )}
+        {locked && (
+          <Badge variant="outline" className="gap-1 text-xs">
+            <Lock size={12} />
+            Locked
+          </Badge>
+        )}
+      </div>
+      <h1
+        class="learn-detail-title font-overpass-mono text-3xl tracking-tight text-gray-900 dark:text-[rgb(245,245,245)] sm:text-4xl"
+      >
+        {item.title}
+      </h1>
+      {item.summary && (
+        <p class="learn-detail-summary text-base text-gray-700 dark:text-gray-300 sm:text-lg">
+          {item.summary}
+        </p>
+      )}
+      {item.coverImage && !locked && (
+        <div class="learn-detail-cover overflow-hidden rounded-xl bg-muted shadow">
+          <img
+            src={assetUrl(item.coverImage, "")}
+            alt={item.title}
+            class="aspect-video h-full w-full object-cover"
+          />
+        </div>
+      )}
+    </header>
+
+    {
+      locked ? (
+        <section class="learn-paywall rounded-xl border border-amber-400/40 bg-amber-50 p-6 dark:bg-amber-950/20">
+          <div class="learn-paywall-header mb-4 flex items-center gap-2">
+            <Lock size={20} className="text-amber-700 dark:text-amber-400" />
+            <h2 class="font-overpass-mono text-xl text-gray-900 dark:text-[rgb(245,245,245)]">
+              Preview only
+            </h2>
+          </div>
+          {item.videoPreview && (
+            <div class="learn-paywall-video mb-4 overflow-hidden rounded-lg bg-black">
+              <video
+                src={assetUrl(item.videoPreview, "")}
+                controls
+                playsinline
+                preload="metadata"
+                class="aspect-video h-full w-full"
+              >
+                Your browser does not support inline video. <a href={assetUrl(item.videoPreview, "")}>Download the preview clip</a>.
+              </video>
+            </div>
+          )}
+          {protectedHtml && (
+            <div
+              class="learn-paywall-details prose dark:prose-invert max-w-none"
+              set:html={protectedHtml}
+            />
+          )}
+          <p class="learn-paywall-cta mt-4 text-sm text-gray-600 dark:text-gray-400">
+            Full content unlocks once you own a product that grants access to this item.
+            {" "}
+            <a href="/shop/" class="font-medium underline hover:no-underline">
+              Browse the shop
+            </a>
+            .
+          </p>
+        </section>
+      ) : item.blocks.length > 0 ? (
+        <CmsPageRenderer blocks={item.blocks} />
+      ) : (
+        <p class="learn-detail-empty py-12 text-center text-gray-500 dark:text-gray-400">
+          This lesson doesn't have any content yet.
+        </p>
+      )
+    }
+  </div>
+</BaseLayout>
