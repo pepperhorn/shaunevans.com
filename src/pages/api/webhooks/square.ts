@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { getPaymentProvider } from "@/lib/payments";
 import { markOrderPaid } from "@/lib/orders";
+import { fulfillPaidOrder } from "@/lib/booking/fulfil";
 
 export const prerender = false;
 
@@ -22,9 +23,16 @@ export const POST: APIRoute = async ({ request, url }) => {
 
   if (event.status === "paid" && event.payment_session_id && event.payment_intent_id) {
     try {
-      await markOrderPaid(event.payment_session_id, event.payment_intent_id);
+      // Returns the order whether this delivery flipped it or it was already paid,
+      // so replays still fulfil (fulfillPaidOrder is idempotent).
+      const order = await markOrderPaid(event.payment_session_id, event.payment_intent_id);
+      if (order) {
+        const res = await fulfillPaidOrder(order.id);
+        if (res.attention.length > 0) console.warn(`[webhook/square] order ${order.id} needs attention:`, res.attention);
+      }
     } catch (err) {
-      console.error("[webhook/square] markOrderPaid failed:", err);
+      // 500 so Square retries the delivery.
+      console.error("[webhook/square] mark paid / fulfil failed:", err);
       return new Response("error", { status: 500 });
     }
   }

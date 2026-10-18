@@ -42,7 +42,8 @@ export class DirectusError extends Error {
   }
 }
 
-async function request<T>(
+/** Authenticated Directus REST call (shared with sibling server-only booking modules). */
+export async function request<T>(
   method: "GET" | "POST" | "PATCH",
   path: string,
   opts: { params?: Record<string, string>; body?: unknown } = {},
@@ -260,6 +261,9 @@ export async function createBooking(input: {
   status: "held" | "confirmed";
   source: "purchase" | "credit";
   creditId?: string;
+  /** Order + line this booking belongs to (Task 8 re-occupy links the replacement row). */
+  orderId?: string;
+  orderItemId?: string;
   visitorTz: string;
   settings: BookingSettings;
   /** Internal (Task 8 re-occupy of a paid-but-expired hold): skip the grid check; only the DB constraint decides. */
@@ -301,6 +305,8 @@ export async function createBooking(input: {
         hold_expires_at: holdExpiresAt,
         source: input.source,
         credit: input.creditId ?? null,
+        order: input.orderId ?? null,
+        order_item: input.orderItemId ?? null,
         visitor_timezone: input.visitorTz,
         when_label: label,
       },

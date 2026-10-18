@@ -157,6 +157,15 @@ describe("createBooking", () => {
     const post = calls.find((c) => c.method === "POST")!;
     expect((post.body as Record<string, unknown>).hold_expires_at).toBeNull();
   });
+
+  it("writes order / order_item when given, null otherwise", async () => {
+    mockDirectus(withBlock(() => ok({ id: "b3" })));
+    await createBooking({ ...baseInput, startAt: at("19:00"), orderId: "o-1", orderItemId: "oi-1" });
+    await createBooking({ ...baseInput, startAt: at("20:00") });
+    const posts = calls.filter((c) => c.method === "POST").map((c) => c.body as Record<string, unknown>);
+    expect(posts[0]).toMatchObject({ order: "o-1", order_item: "oi-1" });
+    expect(posts[1]).toMatchObject({ order: null, order_item: null });
+  });
 });
 
 describe("getActiveCredits", () => {
