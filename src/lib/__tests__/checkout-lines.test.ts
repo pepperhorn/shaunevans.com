@@ -6,7 +6,7 @@ vi.mock("@/lib/catalog", () => ({
   ],
 }));
 
-import { CheckoutError, createOrder, linkBookingsToOrder, resolveCheckoutLines } from "@/lib/orders";
+import { CheckoutError, createOrder, linkBookingsToOrder, markOrderPaid, resolveCheckoutLines } from "@/lib/orders";
 import { normalizePhone } from "@/lib/phone";
 import { toCheckoutItems, type CartItem } from "@/lib/cart";
 
@@ -220,5 +220,33 @@ describe("toCheckoutItems", () => {
       { kind: "lesson_booking", booking_id: BOOKING },
       { kind: "lesson_pack", lesson_id: 3 },
     ]);
+  });
+});
+
+describe("markOrderPaid", () => {
+  function stubOrder(status: string) {
+    calls = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        calls.push({ method: init?.method ?? "GET", url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        if (url.pathname === "/items/orders" && !init?.method) return ok([{ id: "order-1", status }]);
+        if (url.pathname === "/items/orders/order-1" && init?.method === "PATCH")
+          return ok({ id: "order-1", status: "paid", ...JSON.parse(String(init.body)) });
+        throw new Error(`unmocked ${init?.method ?? "GET"} ${url.pathname}`);
+      }),
+    );
+  }
+
+  it.each(["cancelled", "refunded"])("leaves a %s order unchanged (no flip back to paid)", async (status) => {
+    stubOrder(status);
+    expect(await markOrderPaid("SQ-ORD", "PAY1")).toEqual({ id: "order-1", status });
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
+  });
+
+  it("flips an awaiting_payment order to paid", async () => {
+    stubOrder("awaiting_payment");
+    expect(await markOrderPaid("SQ-ORD", "PAY1")).toMatchObject({ id: "order-1", status: "paid", payment_intent_id: "PAY1" });
   });
 });

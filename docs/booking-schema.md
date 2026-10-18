@@ -135,6 +135,24 @@ SELECT count(*) FROM bookings;                        → 0
 
 (Savepoints were used between the failing inserts. All rows were on 2030-01-01 UTC.)
 
+## One credit row per pack line (DDL, Task 8, 2026-10-19)
+
+Fulfilment (`src/lib/booking/fulfil.ts`) checks for an existing credit row and then inserts one. Two parallel webhook deliveries could both get past the check, so the database enforces one pack credit per `order_item`:
+
+```sql
+CREATE UNIQUE INDEX lesson_credits_one_per_pack_item ON lesson_credits (order_item) WHERE pack IS NOT NULL;
+```
+
+The index is partial because refund credits (Task 10, `pack` null) may share an `order_item` with the pack credit. A NULL `order_item` never collides.
+
+- **Pre-check:** `SELECT order_item, count(*) FROM lesson_credits WHERE pack IS NOT NULL GROUP BY order_item HAVING count(*) > 1` returned 0 rows. The table held 1 row (pack set, order_item set).
+- **Verification:** each insert ran in its own transaction and was rolled back; the count is still 1 afterwards.
+  - Inserting a second pack row for the same `order_item` → `ERROR 23505 duplicate key value violates unique constraint "lesson_credits_one_per_pack_item"`.
+  - Inserting a `pack NULL` row for the same `order_item` → `INSERT 0 1`.
+- **Over REST:** a duplicate `POST /items/lesson_credits` with `DIRECTUS_TOKEN` returns **400 `RECORD_NOT_UNIQUE`** (field `order_item`), not a masked 500. Fulfil treats any failed credit insert as success when a pack credit for that `order_item` already exists.
+
+Rollback: `DROP INDEX lesson_credits_one_per_pack_item;`
+
 ## Seed
 
 Existing `lessons` rows were mapped by slug, not assumed ids. Only the new fields were written; names, prices and descriptions are unchanged.

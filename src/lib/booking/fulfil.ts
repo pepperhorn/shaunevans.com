@@ -12,8 +12,8 @@ import { BOOKING_TZ } from "./time";
 dayjs.extend(utc);
 
 const DEFAULT_CREDIT_EXPIRY_MONTHS = 12;
-/** Statuses that mean a replacement booking for a line already exists. */
-const LIVE_REPLACEMENT: BookingStatus[] = ["held", "confirmed", "completed", "no_show"];
+/** Cancel reasons that mean the hold lapsed before payment (repo expireStaleHolds / release route) — the only ones re-occupied. */
+const LAPSED_HOLD_REASONS = ["hold_expired", "released"];
 
 type RawOrder = { id: string; user: number | null; paid_at: string | null; notes: string | null };
 
@@ -26,6 +26,7 @@ type RawBooking = {
   end_at: string;
   visitor_timezone: string | null;
   order: string | null;
+  cancel_reason: string | null;
 };
 
 type RawLine = {
@@ -58,7 +59,7 @@ export async function fulfillPaidOrder(orderId: string): Promise<FulfilResult> {
       fields: [
         "id",
         "lesson.id,lesson.kind,lesson.credits,lesson.credit_lesson,lesson.credit_expiry_months",
-        "booking.id,booking.status,booking.user,booking.lesson,booking.start_at,booking.end_at,booking.visitor_timezone,booking.order",
+        "booking.id,booking.status,booking.user,booking.lesson,booking.start_at,booking.end_at,booking.visitor_timezone,booking.order,booking.cancel_reason",
       ].join(","),
       limit: "-1",
     },
@@ -80,16 +81,21 @@ export async function fulfillPaidOrder(orderId: string): Promise<FulfilResult> {
           body: { status: "confirmed", hold_expires_at: null },
         });
         result.confirmed.push(b.id);
-      } else if (b.status === "cancelled") {
+      } else if (b.status === "cancelled" && LAPSED_HOLD_REASONS.includes(b.cancel_reason ?? "")) {
         const outcome = await reoccupy(order, line.id, b, existingNotes);
         if (outcome.kind === "confirmed") result.confirmed.push(outcome.id);
         else if (outcome.kind === "attention") flag(slotTakenNote(b.id));
       }
-      // confirmed / completed / no_show: already fulfilled.
+      // confirmed / completed / no_show, or cancelled for any other reason (e.g. Shaun
+      // cancelled + refunded in admin): already handled — never re-book.
     }
 
     const lesson = line.lesson;
-    if (lesson?.kind === "pack" && order.user != null) {
+    if (lesson?.kind === "pack") {
+      if (order.user == null) {
+        flag(`Order item ${line.id}: pack ${lesson.id} paid but the order has no user — add credits by hand.`);
+        continue;
+      }
       if (!lesson.credits || lesson.credit_lesson == null) {
         flag(`Order item ${line.id}: pack ${lesson.id} has no credits / credit lesson configured — add credits by hand.`);
         continue;
@@ -126,9 +132,10 @@ async function reoccupy(
 ): Promise<{ kind: "confirmed"; id: string } | { kind: "attention" } | { kind: "done" }> {
   if (existingNotes.split("\n").includes(slotTakenNote(b.id))) return { kind: "attention" };
 
+  // Any other booking for this line (in any status, even cancelled) means a replacement was already made.
   const replacement = await request<Array<{ id: string }>>("GET", "/items/bookings", {
     params: {
-      filter: JSON.stringify({ order_item: { _eq: orderItemId }, status: { _in: LIVE_REPLACEMENT } }),
+      filter: JSON.stringify({ order_item: { _eq: orderItemId }, id: { _neq: b.id } }),
       fields: "id",
       limit: "1",
     },
@@ -156,30 +163,46 @@ async function reoccupy(
   return res.ok ? { kind: "confirmed", id: res.id } : { kind: "attention" };
 }
 
-/** One lesson_credits row per pack order_item; returns the new id, or null if it already exists. */
+/**
+ * One lesson_credits row per pack order_item (enforced by the partial unique index
+ * lesson_credits_one_per_pack_item); returns the new id, or null if it already exists.
+ */
 async function ensurePackCredits(
   order: RawOrder,
   orderItemId: string,
   pack: NonNullable<RawLine["lesson"]>,
 ): Promise<string | null> {
-  const existing = await request<Array<{ id: string }>>("GET", "/items/lesson_credits", {
-    params: { filter: JSON.stringify({ order_item: { _eq: orderItemId } }), fields: "id", limit: "1" },
-  });
-  if (existing.length > 0) return null;
+  if ((await findPackCredit(orderItemId)) !== null) return null;
 
   const months = pack.credit_expiry_months ?? DEFAULT_CREDIT_EXPIRY_MONTHS;
   const paidAt = order.paid_at ? dayjs.utc(order.paid_at) : dayjs.utc();
-  const created = await request<{ id: string }>("POST", "/items/lesson_credits", {
-    params: { fields: "id" },
-    body: {
-      status: "active",
-      user: order.user,
-      pack: pack.id,
-      lesson: pack.credit_lesson,
-      order_item: orderItemId,
-      credits_total: pack.credits,
-      expires_at: paidAt.add(months, "month").toISOString(),
+  const body = {
+    status: "active",
+    user: order.user,
+    pack: pack.id,
+    lesson: pack.credit_lesson,
+    order_item: orderItemId,
+    credits_total: pack.credits,
+    expires_at: paidAt.add(months, "month").toISOString(),
+  };
+  try {
+    const created = await request<{ id: string }>("POST", "/items/lesson_credits", { params: { fields: "id" }, body });
+    return created.id;
+  } catch (err) {
+    // A parallel delivery won the unique index lesson_credits_one_per_pack_item (se-cms answers
+    // 400 RECORD_NOT_UNIQUE); any failure with the row now present counts as done.
+    if ((await findPackCredit(orderItemId)) !== null) return null;
+    throw err;
+  }
+}
+
+async function findPackCredit(orderItemId: string): Promise<string | null> {
+  const rows = await request<Array<{ id: string }>>("GET", "/items/lesson_credits", {
+    params: {
+      filter: JSON.stringify({ order_item: { _eq: orderItemId }, pack: { _nnull: true } }),
+      fields: "id",
+      limit: "1",
     },
   });
-  return created.id;
+  return rows[0]?.id ?? null;
 }

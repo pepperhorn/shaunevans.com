@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { getPaymentProvider } from "@/lib/payments";
-import { markOrderPaid } from "@/lib/orders";
+import { CLOSED_ORDER_STATUSES, markOrderPaid } from "@/lib/orders";
 import { fulfillPaidOrder } from "@/lib/booking/fulfil";
 
 export const prerender = false;
@@ -26,7 +26,7 @@ export const POST: APIRoute = async ({ request, url }) => {
       // Returns the order whether this delivery flipped it or it was already paid,
       // so replays still fulfil (fulfillPaidOrder is idempotent).
       const order = await markOrderPaid(event.payment_session_id, event.payment_intent_id);
-      if (order) {
+      if (order && !CLOSED_ORDER_STATUSES.includes(order.status)) {
         const res = await fulfillPaidOrder(order.id);
         if (res.attention.length > 0) console.warn(`[webhook/square] order ${order.id} needs attention:`, res.attention);
       }

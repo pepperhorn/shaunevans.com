@@ -22,6 +22,8 @@ type Store = {
   credits: Row[];
   /** POST /items/bookings answers with a masked 500 (slot taken) when true. */
   slotTaken: boolean;
+  /** POST /items/lesson_credits loses a race: a parallel delivery's row lands, this one gets 400 RECORD_NOT_UNIQUE. */
+  creditRace: boolean;
 };
 
 let store: Store;
@@ -48,13 +50,21 @@ function heldBooking(over: Row = {}): Row {
   };
 }
 
-function setup(opts: { items: Row[]; bookings?: Row[]; slotTaken?: boolean; notes?: string | null }) {
+function setup(opts: {
+  items: Row[];
+  bookings?: Row[];
+  slotTaken?: boolean;
+  creditRace?: boolean;
+  notes?: string | null;
+  user?: number | null;
+}) {
   store = {
-    order: { id: ORDER, user: USER, status: "paid", paid_at: PAID_AT, notes: opts.notes ?? null, needs_attention: false },
+    order: { id: ORDER, user: opts.user === undefined ? USER : opts.user, status: "paid", paid_at: PAID_AT, notes: opts.notes ?? null, needs_attention: false },
     items: opts.items,
     bookings: new Map((opts.bookings ?? []).map((b) => [b.id as string, { ...b }])),
     credits: [],
     slotTaken: opts.slotTaken ?? false,
+    creditRace: opts.creditRace ?? false,
   };
   calls = [];
   seq = 0;
@@ -85,11 +95,10 @@ function setup(opts: { items: Row[]; bookings?: Row[]; slotTaken?: boolean; note
       if (p === "/items/bookings" && c.method === "PATCH") return ok([]); // expireStaleHolds
       if (p === "/items/bookings" && c.method === "GET") {
         const live = (b: Row) => ["held", "confirmed"].includes(b.status as string);
-        // replacement lookup: bookings for an order_item
+        // replacement lookup: other bookings for an order_item, any status
         if (filter.order_item) {
           const oi = filter.order_item._eq;
-          const st: string[] = filter.status?._in ?? [];
-          return ok([...store.bookings.values()].filter((b) => b.order_item === oi && st.includes(b.status as string)));
+          return ok([...store.bookings.values()].filter((b) => b.order_item === oi && b.id !== filter.id?._neq));
         }
         // overlap probe from createBooking
         return ok([...store.bookings.values()].filter(live).length && store.slotTaken ? [{ id: "someone-else" }] : []);
@@ -109,6 +118,14 @@ function setup(opts: { items: Row[]; bookings?: Row[]; slotTaken?: boolean; note
         return ok(store.credits.filter((r) => r.order_item === filter.order_item?._eq).map((r) => ({ id: r.id })));
       }
       if (p === "/items/lesson_credits" && c.method === "POST") {
+        if (store.creditRace) {
+          store.credits.push({ id: "cr-parallel", ...(c.body as Row) });
+          // live se-cms shape for the lesson_credits_one_per_pack_item violation
+          return new Response(
+            JSON.stringify({ errors: [{ message: "has to be unique.", extensions: { code: "RECORD_NOT_UNIQUE", field: "order_item" } }] }),
+            { status: 400 },
+          );
+        }
         const id = `cr-${++seq}`;
         store.credits.push({ id, ...(c.body as Row) });
         return ok({ id });
@@ -195,7 +212,7 @@ describe("fulfillPaidOrder", () => {
     setup({
       items: [bookingItem],
       bookings: [
-        heldBooking({ status: "cancelled", hold_expires_at: null }),
+        heldBooking({ status: "cancelled", cancel_reason: "hold_expired", hold_expires_at: null }),
         heldBooking({ id: "other", status: "confirmed", user: 99, order: "order-x", order_item: "oi-x" }),
       ],
       slotTaken: true,
@@ -224,6 +241,49 @@ describe("fulfillPaidOrder", () => {
     expect(store.order).toMatchObject({ needs_attention: true, notes: msg });
   });
 
+  it("a released hold (cancel_reason released) is re-occupied too", async () => {
+    setup({ items: [bookingItem], bookings: [heldBooking({ status: "cancelled", cancel_reason: "released" })] });
+    const res = await fulfillPaidOrder(ORDER);
+    expect(res.confirmed).toEqual(["bk-new-1"]);
+  });
+
+  it("an admin-cancelled booking stays cancelled, also on replay", async () => {
+    setup({ items: [bookingItem], bookings: [heldBooking({ status: "cancelled", cancel_reason: "refunded by Shaun" })] });
+    for (let i = 0; i < 2; i++) {
+      expect(await fulfillPaidOrder(ORDER)).toEqual({ confirmed: [], credits: [], attention: [] });
+    }
+    expect(store.bookings.size).toBe(1);
+    expect(store.bookings.get("bk-1")!.status).toBe("cancelled");
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
+  });
+
+  it("a cancelled replacement booking is not recreated", async () => {
+    setup({
+      items: [bookingItem],
+      bookings: [
+        heldBooking({ status: "cancelled", cancel_reason: "hold_expired" }),
+        heldBooking({ id: "bk-repl", status: "cancelled", cancel_reason: "refunded by Shaun" }),
+      ],
+    });
+    expect(await fulfillPaidOrder(ORDER)).toEqual({ confirmed: [], credits: [], attention: [] });
+    expect(calls.filter((c) => c.method === "POST" && c.url.pathname === "/items/bookings")).toHaveLength(0);
+  });
+
+  it("a credit insert lost to a parallel delivery (unique index) counts as done, not an error", async () => {
+    setup({ items: [packItem], creditRace: true });
+    const res = await fulfillPaidOrder(ORDER);
+    expect(res).toEqual({ confirmed: [], credits: [], attention: [] });
+    expect(store.credits.map((c) => c.id)).toEqual(["cr-parallel"]);
+  });
+
+  it("a pack line on an order with no user is flagged", async () => {
+    setup({ items: [packItem], user: null });
+    const res = await fulfillPaidOrder(ORDER);
+    expect(store.credits).toHaveLength(0);
+    expect(res.attention).toEqual(["Order item oi-2: pack 2 paid but the order has no user — add credits by hand."]);
+    expect(store.order.needs_attention).toBe(true);
+  });
+
   it("credits default to 12 months when credit_expiry_months is null", async () => {
     lessons[5] = { id: 5, kind: "pack", credits: 6, credit_lesson: 1, credit_expiry_months: null };
     setup({ items: [{ id: "oi-5", order: ORDER, lesson: 5, booking: null }] });
@@ -248,7 +308,10 @@ describe("fulfillPaidOrder", () => {
 const markOrderPaid = vi.fn();
 const fulfilMock = vi.fn();
 
-vi.mock("@/lib/orders", () => ({ markOrderPaid: (...a: unknown[]) => markOrderPaid(...a) }));
+vi.mock("@/lib/orders", () => ({
+  CLOSED_ORDER_STATUSES: ["cancelled", "refunded"],
+  markOrderPaid: (...a: unknown[]) => markOrderPaid(...a),
+}));
 vi.mock("@/lib/payments", () => ({
   getPaymentProvider: () => ({
     verifyWebhookSignature: () => true,
@@ -285,6 +348,13 @@ describe("square webhook", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const res = await post();
     expect(res.status).toBe(500);
+  });
+
+  it.each(["cancelled", "refunded"])("a %s order is not fulfilled (200)", async (status) => {
+    markOrderPaid.mockResolvedValue({ id: ORDER, status });
+    const res = await post();
+    expect(res.status).toBe(200);
+    expect(fulfilMock).not.toHaveBeenCalled();
   });
 
   it("unknown order (markOrderPaid null) does not fulfil", async () => {

@@ -261,6 +261,9 @@ export async function attachPaymentSession(
   });
 }
 
+/** Order statuses that payment events must not reopen or fulfil. */
+export const CLOSED_ORDER_STATUSES = ["cancelled", "refunded"];
+
 export async function markOrderPaid(
   sessionId: string,
   paymentIntentId: string,
@@ -272,7 +275,9 @@ export async function markOrderPaid(
   });
   const existing = found[0];
   if (!existing) return null;
-  if (existing.status === "paid" || existing.status === "fulfilled") return existing;
+  // Already paid → return as-is (webhook replays still fulfil). Cancelled / refunded
+  // orders must never flip back to paid (e.g. a refund's payment.updated still says COMPLETED).
+  if (["paid", "fulfilled", ...CLOSED_ORDER_STATUSES].includes(existing.status)) return existing;
 
   return await directusPatch<Order>(`/items/orders/${existing.id}`, {
     status: "paid",
