@@ -21,9 +21,9 @@ function categoryFolderFor(post: (typeof allPosts)[number]): string | null {
   return null;
 }
 
-// Featured posts that have a Directus image and live in a known category folder.
+// Featured posts with a Directus image or hero video, in a known category folder.
 const featured = allPosts.filter((p) => {
-  if (!p.imageUrl) return false;
+  if (!p.imageUrl && !p.heroVideo) return false;
   if (!p.tags.some((t) => t.slug === "featured")) return false;
   return categoryFolderFor(p) !== null;
 });
@@ -39,15 +39,18 @@ const allImages = {
   medium: [] as string[],
   small: [] as string[],
 };
+const allVideos: ({ url: string; type: string } | null)[] = [];
 const allAlts: string[] = [];
 const allUrls: string[] = [];
 
 for (const post of featured) {
   const folder = categoryFolderFor(post)!;
-  const img = post.imageUrl!;
-  allImages.large.push(directusTransform(img, 1920, 1080));
-  allImages.medium.push(directusTransform(img, 1280, 720));
-  allImages.small.push(directusTransform(img, 854, 480));
+  const img = post.imageUrl;
+  // The image doubles as the video's poster; a video-only post has no still.
+  allImages.large.push(img ? directusTransform(img, 1920, 1080) : "");
+  allImages.medium.push(img ? directusTransform(img, 1280, 720) : "");
+  allImages.small.push(img ? directusTransform(img, 854, 480) : "");
+  allVideos.push(post.heroVideo);
   allAlts.push(post.title);
   allUrls.push(`/${folder}/${post.slug}/`);
 }
@@ -63,6 +66,7 @@ const imageSizes = {
     <Homepage
       title={pageTitle}
       images={JSON.stringify(allImages)}
+      videos={JSON.stringify(allVideos)}
       alt={JSON.stringify(allAlts)}
       urls={JSON.stringify(allUrls)}
       width={imageSizes.width}
