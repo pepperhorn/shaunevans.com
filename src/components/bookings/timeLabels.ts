@@ -24,12 +24,38 @@ export function initialTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || BOOKING_TZ;
 }
 
+const FALLBACK_ZONES = [
+  "Australia/Sydney",
+  "Australia/Perth",
+  "Pacific/Auckland",
+  "Asia/Singapore",
+  "Europe/London",
+  "Europe/Berlin",
+  "America/New_York",
+  "America/Los_Angeles",
+];
+
+/** Every IANA zone the browser knows; a short list (+ the browser's own) where `supportedValuesOf` is missing. */
 export function allTimeZones(): string[] {
   try {
-    return Intl.supportedValuesOf("timeZone");
+    const all = Intl.supportedValuesOf?.("timeZone");
+    if (all?.length) return all;
   } catch {
-    return [];
+    /* fall through */
   }
+  const own = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return own && !FALLBACK_ZONES.includes(own) ? [...FALLBACK_ZONES, own] : FALLBACK_ZONES;
+}
+
+/** Zones whose id or city contains `query` (case-insensitive; spaces match underscores). */
+export function filterTimeZones(zones: string[], query: string, limit = 8): string[] {
+  const q = query.trim().toLowerCase().replace(/\s+/g, "_");
+  if (!q) return zones.slice(0, limit);
+  const hits = zones.filter((z) => z.toLowerCase().includes(q));
+  // City-prefix matches first ("lon" → London before Barcelona-ish partials).
+  const city = (z: string) => (z.split("/").pop() ?? z).toLowerCase();
+  hits.sort((a, b) => Number(!city(a).startsWith(q)) - Number(!city(b).startsWith(q)));
+  return hits.slice(0, limit);
 }
 
 /** "Australia/Sydney" → "Sydney", "America/Argentina/Buenos_Aires" → "Buenos Aires". */

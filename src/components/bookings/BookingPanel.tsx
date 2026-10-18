@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "@nanostores/react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import AuthOverlay from "@/components/shop/AuthOverlay";
@@ -15,6 +15,7 @@ import { cellKey, spanKeys, toGridModel } from "./gridModel";
 import {
   allTimeZones,
   cityOf,
+  filterTimeZones,
   gmtOffset,
   initialTimeZone,
   isTimeZone,
@@ -67,6 +68,11 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
   const [tzEditing, setTzEditing] = useState(false);
   const [tzQuery, setTzQuery] = useState("");
   const zones = useMemo(allTimeZones, []);
+  const tzMatches = useMemo(() => filterTimeZones(zones, tzQuery), [zones, tzQuery]);
+  function closeTzPicker() {
+    setTzEditing(false);
+    setTzQuery("");
+  }
   function chooseTz(next: string) {
     if (!isTimeZone(next)) return;
     setTz(next);
@@ -396,26 +402,61 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
           change
         </button>
         {tzEditing && (
-          <div className="booking-tz-picker mt-2 flex max-w-sm items-center gap-2">
-            <Input
-              className="booking-tz-input h-8 bg-white text-xs dark:bg-neutral-800"
-              list="booking-tz-options"
-              placeholder="Search city, e.g. London"
-              aria-label="Time zone"
-              autoFocus
-              value={tzQuery}
-              onChange={(e) => {
-                setTzQuery(e.target.value);
-                if (zones.includes(e.target.value)) chooseTz(e.target.value);
-              }}
-            />
-            <datalist id="booking-tz-options">
-              {zones.map((z) => (
-                <option key={z} value={z}>
-                  {cityOf(z)}
-                </option>
-              ))}
-            </datalist>
+          <div className="booking-tz-picker mt-2 max-w-sm">
+            <div className="booking-tz-search flex items-center gap-2">
+              <Input
+                className="booking-tz-input h-8 bg-white text-xs dark:bg-neutral-800"
+                placeholder="Search city, e.g. London"
+                aria-label="Time zone"
+                aria-controls="booking-tz-options"
+                autoFocus
+                value={tzQuery}
+                onChange={(e) => setTzQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (tzMatches[0]) chooseTz(tzMatches[0]);
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    closeTzPicker();
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="btn-booking-tz-close h-8 w-8 shrink-0"
+                aria-label="Close time zone picker"
+                onClick={closeTzPicker}
+              >
+                <X />
+              </Button>
+            </div>
+            <ul
+              id="booking-tz-options"
+              role="listbox"
+              aria-label="Matching time zones"
+              className="booking-tz-options mt-1 max-h-48 overflow-y-auto rounded-md border border-[#d9d4ce] bg-white dark:border-neutral-700 dark:bg-neutral-800"
+            >
+              {tzMatches.length === 0 ? (
+                <li className="booking-tz-none px-3 py-1.5 text-xs">No matching time zone</li>
+              ) : (
+                tzMatches.map((z, i) => (
+                  <li key={z} role="option" aria-selected={z === tz} className="booking-tz-option-item">
+                    <button
+                      type="button"
+                      className={`booking-tz-option w-full px-3 py-1.5 text-left text-xs hover:bg-[#f4f2ee] dark:hover:bg-neutral-700 ${
+                        i === 0 ? "bg-[#f4f2ee] dark:bg-neutral-700" : ""
+                      }`}
+                      onClick={() => chooseTz(z)}
+                    >
+                      {cityOf(z)} <span className="booking-tz-option-id text-[#8a8486]">{z}</span>
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
           </div>
         )}
       </div>
@@ -485,7 +526,8 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
       )}
 
       {sel && (
-        <div className="booking-summary mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#d9d4ce] bg-white p-3 dark:border-neutral-700 dark:bg-neutral-800">
+        // Sticky above the site's fixed footer (taller on mobile, where it stacks) so the CTA is never hidden.
+        <div className="booking-summary sticky bottom-[calc(7rem+env(safe-area-inset-bottom))] z-20 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#d9d4ce] bg-white p-3 shadow-md sm:bottom-24 dark:border-neutral-700 dark:bg-neutral-800">
           <div className="booking-summary-when min-w-0">
             <div className="booking-summary-local font-overpass-mono text-xs">{sel.local}</div>
             {sel.sydney && (

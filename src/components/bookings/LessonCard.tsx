@@ -15,7 +15,8 @@ const formatLabel: Record<Lesson["format"], string> = {
 };
 
 export default function LessonCard({ lesson }: { lesson: Lesson }) {
-  const kind = lesson.kind ?? (lesson.bookingMode === "contact" ? "contact" : "single");
+  // Same rule as BookingPanel: only an explicit kind is bookable; missing → contact.
+  const kind = lesson.kind ?? "contact";
   return (
     <Card
       className={`lesson-card relative flex flex-col border-border/60 ${

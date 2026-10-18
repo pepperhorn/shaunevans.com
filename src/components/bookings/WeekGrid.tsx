@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { Fragment, useRef } from "react";
 import type { CellState, GridModel } from "./gridModel";
 import { dayLabel } from "./timeLabels";
 
@@ -20,21 +20,34 @@ const HATCH =
 const stateClass: Record<CellState, string> = {
   start:
     "booking-grid-cell--start cursor-pointer border border-[#d9d4ce] bg-white hover:border-[#231f20] hover:bg-[#f4f2ee] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#231f20] dark:border-neutral-600 dark:bg-neutral-800 dark:hover:border-neutral-200",
-  available: "booking-grid-cell--available border border-[#d9d4ce] bg-white dark:border-neutral-600 dark:bg-neutral-800",
+  available:
+    "booking-grid-cell--available border border-[#d9d4ce] bg-white dark:border-neutral-600 dark:bg-neutral-800",
   booked: "booking-grid-cell--booked bg-[#cfcac4] dark:bg-neutral-600",
   unavailable: `booking-grid-cell--unavailable ${HATCH}`,
 };
 
+const toMins = (hhmm: string) =>
+  Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+
 const SELECTED =
   "booking-grid-cell--selected border border-[#231f20] bg-[#231f20] dark:border-neutral-100 dark:bg-neutral-100";
 
-export default function WeekGrid({ days, model, startAt, selected, onSelect, onSwipe }: Props) {
+export default function WeekGrid({
+  days,
+  model,
+  startAt,
+  selected,
+  onSelect,
+  onSwipe,
+}: Props) {
   const touchX = useRef<number | null>(null);
 
   return (
     <div
       className="booking-grid grid w-full gap-[3px] select-none"
-      style={{ gridTemplateColumns: `2.75rem repeat(${days.length}, minmax(0, 1fr))` }}
+      style={{
+        gridTemplateColumns: `2.75rem repeat(${days.length}, minmax(0, 1fr))`,
+      }}
       role="grid"
       aria-label="Available lesson start times"
       onTouchStart={(e) => {
@@ -66,56 +79,68 @@ export default function WeekGrid({ days, model, startAt, selected, onSelect, onS
         );
       })}
 
-      {model.rows.map((row) => (
-        <div key={row} className="booking-grid-row contents" role="row">
-          <div
-            role="rowheader"
-            className={`booking-grid-time h-7 pr-1 text-right text-[10px] leading-7 text-[#8a8486] sm:h-[22px] sm:leading-[22px] dark:text-neutral-500 ${
-              row.endsWith(":00") ? "" : "opacity-60"
-            }`}
-          >
-            {row}
-          </div>
-          {days.map((d) => {
-            const key = `${d}|${row}`;
-            const state = model.cells[key] ?? "unavailable";
-            const isSel = selected.has(key);
-            const base = "booking-grid-cell h-7 rounded-[3px] sm:h-[22px]";
-            const ms = startAt.get(key);
-            if (state === "start" && ms != null) {
+      {model.rows.map((row, i) => (
+        <Fragment key={row}>
+          {i > 0 && toMins(row) - toMins(model.rows[i - 1]) !== 30 && (
+            <div
+              role="separator"
+              aria-label={`No times between ${model.rows[i - 1]} and ${row}`}
+              className="booking-grid-gap col-span-full my-1 border-t border-dashed border-[#bdb6af] dark:border-neutral-600"
+            />
+          )}
+          <div className="booking-grid-row contents" role="row">
+            <div
+              role="rowheader"
+              className={`booking-grid-time h-7 pr-1 text-right text-[10px] leading-7 text-[#8a8486] sm:h-[22px] sm:leading-[22px] dark:text-neutral-500 ${
+                row.endsWith(":00") ? "" : "opacity-60"
+              }`}
+            >
+              {row}
+            </div>
+            {days.map((d) => {
+              const key = `${d}|${row}`;
+              const state = model.cells[key] ?? "unavailable";
+              const isSel = selected.has(key);
+              const base = "booking-grid-cell h-7 rounded-[3px] sm:h-[22px]";
+              const ms = startAt.get(key);
+              if (state === "start" && ms != null) {
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    role="gridcell"
+                    aria-selected={isSel}
+                    aria-label={`${dayLabel(d).weekday} ${dayLabel(d).date} ${row}`}
+                    onClick={() => onSelect(ms)}
+                    className={`${base} ${isSel ? SELECTED : stateClass.start}`}
+                  />
+                );
+              }
               return (
-                <button
+                <div
                   key={key}
-                  type="button"
                   role="gridcell"
-                  aria-selected={isSel}
-                  aria-label={`${dayLabel(d).weekday} ${dayLabel(d).date} ${row}`}
-                  onClick={() => onSelect(ms)}
-                  className={`${base} ${isSel ? SELECTED : stateClass.start}`}
+                  aria-label={isSel ? undefined : state}
+                  className={`${base} ${isSel ? SELECTED : stateClass[state]}`}
                 />
               );
-            }
-            return (
-              <div
-                key={key}
-                role="gridcell"
-                aria-label={isSel ? undefined : state}
-                className={`${base} ${isSel ? SELECTED : stateClass[state]}`}
-              />
-            );
-          })}
-        </div>
+            })}
+          </div>
+        </Fragment>
       ))}
     </div>
   );
 }
 
 export function GridLegend() {
-  const sw = "booking-legend-swatch inline-block h-2.5 w-3.5 rounded-[2px] align-middle";
+  const sw =
+    "booking-legend-swatch inline-block h-2.5 w-3.5 rounded-[2px] align-middle";
   return (
     <div className="booking-legend mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#6b6668] dark:text-neutral-400">
       <span className="booking-legend-item flex items-center gap-1">
-        <i className={`${sw} border border-[#d9d4ce] bg-white dark:border-neutral-600 dark:bg-neutral-800`} />
+        <i
+          className={`${sw} border border-[#d9d4ce] bg-white dark:border-neutral-600 dark:bg-neutral-800`}
+        />
         Available
       </span>
       <span className="booking-legend-item flex items-center gap-1">
