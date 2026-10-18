@@ -72,14 +72,16 @@ export class SquareProvider implements PaymentProvider {
     }
 
     const json = (await res.json()) as {
-      payment_link?: { id?: string; url?: string };
+      payment_link?: { id?: string; url?: string; order_id?: string };
     };
     const url = json.payment_link?.url;
-    const id = json.payment_link?.id;
-    if (!url || !id) {
-      throw new Error("Square response missing payment_link.url/id");
+    // session_id is the Square *order* id: the payment.updated webhook carries
+    // payment.order_id, which markOrderPaid matches against payment_session_id.
+    const orderId = json.payment_link?.order_id;
+    if (!url || !orderId) {
+      throw new Error("Square response missing payment_link.url/order_id");
     }
-    return { url, session_id: id };
+    return { url, session_id: orderId };
   }
 
   verifyWebhookSignature(rawBody: string, signature: string, requestUrl: string): boolean {

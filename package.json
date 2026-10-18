@@ -8,6 +8,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
+    "test": "vitest run",
     "postbuild": "pagefind --site dist && node scripts/warm-image-cache.mjs",
     "create": "node scripts/create-content.js",
     "update-post": "node scripts/update-post.js",
@@ -76,6 +77,7 @@
     "pagefind": "^1.4.0",
     "prettier": "^3.6.2",
     "prettier-plugin-astro": "^0.14.1",
+    "vitest": "^5.0.5",
     "yaml": "^2.8.1"
   }
 }

@@ -16,12 +16,27 @@ export function getPaymentProvider(): PaymentProvider {
     // bundle based on SQUARE_ENVIRONMENT so flipping environments is a single
     // env var change instead of a manual swap of three values.
     const environment =
-      (import.meta.env.SQUARE_ENVIRONMENT as string | undefined) ?? "sandbox";
+      process.env.SQUARE_ENVIRONMENT ??
+      (import.meta.env.SQUARE_ENVIRONMENT as string | undefined) ??
+      "sandbox";
     const envUpper = environment === "production" ? "PRODUCTION" : "SANDBOX";
-    const env = import.meta.env as Record<string, string | undefined>;
-    const accessToken = env[`SQUARE_${envUpper}_ACCESS_TOKEN`];
-    const locationId = env[`SQUARE_${envUpper}_LOCATION_ID`];
-    const webhookSignatureKey = env[`SQUARE_WEBHOOK_${envUpper}_SIGNATURE_KEY`];
+    // Dynamic keys: `import.meta.env[...]` only holds build-time values, so the
+    // built server must read secrets from process.env at runtime. Falls back to
+    // the unsplit names documented in CLAUDE.md.
+    const meta = import.meta.env as Record<string, string | undefined>;
+    const read = (...keys: string[]) => {
+      for (const k of keys) {
+        const v = process.env[k] ?? meta[k];
+        if (v) return v;
+      }
+      return undefined;
+    };
+    const accessToken = read(`SQUARE_${envUpper}_ACCESS_TOKEN`, "SQUARE_ACCESS_TOKEN");
+    const locationId = read(`SQUARE_${envUpper}_LOCATION_ID`, "SQUARE_LOCATION_ID");
+    const webhookSignatureKey = read(
+      `SQUARE_WEBHOOK_${envUpper}_SIGNATURE_KEY`,
+      "SQUARE_WEBHOOK_SIGNATURE_KEY",
+    );
 
     if (!accessToken || !locationId) {
       throw new Error(

@@ -28,7 +28,7 @@ export const POST: APIRoute = async ({ request, session, url }) => {
       });
     }
 
-    const currency = body.currency ?? "GBP";
+    const currency = body.currency ?? "AUD";
     const resolved = await Promise.all(
       body.items.map(async (i) => {
         const product = await getProduct(i.product_id);
