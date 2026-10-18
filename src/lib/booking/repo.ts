@@ -264,6 +264,9 @@ export async function createBooking(input: {
   /** Order + line this booking belongs to (Task 8 re-occupy links the replacement row). */
   orderId?: string;
   orderItemId?: string;
+  /** Carried over from the original on reschedule. */
+  meetLink?: string | null;
+  studentNotes?: string | null;
   visitorTz: string;
   settings: BookingSettings;
   /** Internal (Task 8 re-occupy of a paid-but-expired hold): skip the grid check; only the DB constraint decides. */
@@ -307,6 +310,8 @@ export async function createBooking(input: {
         credit: input.creditId ?? null,
         order: input.orderId ?? null,
         order_item: input.orderItemId ?? null,
+        ...(input.meetLink ? { meet_link: input.meetLink } : {}),
+        ...(input.studentNotes ? { student_notes: input.studentNotes } : {}),
         visitor_timezone: input.visitorTz,
         when_label: label,
       },
@@ -333,6 +338,8 @@ export type BookingRecord = {
   creditId: string | null;
   orderId: string | null;
   orderItemId: string | null;
+  meetLink: string | null;
+  studentNotes: string | null;
   whenLabel: string | null;
 };
 
@@ -340,7 +347,7 @@ export async function getBooking(id: string): Promise<BookingRecord | null> {
   const rows = await request<Array<Record<string, unknown>>>("GET", "/items/bookings", {
     params: {
       filter: JSON.stringify({ id: { _eq: id } }),
-      fields: "id,status,user,lesson,start_at,end_at,hold_expires_at,source,credit,order,order_item,when_label",
+      fields: "id,status,user,lesson,start_at,end_at,hold_expires_at,source,credit,order,order_item,meet_link,student_notes,when_label",
       limit: "1",
     },
   });
@@ -358,6 +365,8 @@ export async function getBooking(id: string): Promise<BookingRecord | null> {
     creditId: (r.credit as string | null) ?? null,
     orderId: (r.order as string | null) ?? null,
     orderItemId: (r.order_item as string | null) ?? null,
+    meetLink: (r.meet_link as string | null) || null,
+    studentNotes: (r.student_notes as string | null) || null,
     whenLabel: (r.when_label as string | null) ?? null,
   };
 }
@@ -386,6 +395,17 @@ export async function cancelConfirmedBooking(id: string, reason: string): Promis
     },
   });
   return Array.isArray(rows) && rows.some((r) => r.id === id);
+}
+
+/** Flag an order for Shaun: `needs_attention = true` and `note` appended to `orders.notes`. */
+export async function flagOrderAttention(orderId: string, note: string): Promise<void> {
+  const order = await request<{ notes: string | null }>("GET", `/items/orders/${encodeURIComponent(orderId)}`, {
+    params: { fields: "notes" },
+  });
+  await request("PATCH", `/items/orders/${encodeURIComponent(orderId)}`, {
+    params: { fields: "id" },
+    body: { needs_attention: true, notes: [order?.notes ?? "", note].filter(Boolean).join("\n") },
+  });
 }
 
 /** The user's unexpired holds (the hold route caps these). */

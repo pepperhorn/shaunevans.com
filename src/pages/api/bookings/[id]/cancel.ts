@@ -2,7 +2,9 @@ import type { APIRoute } from "astro";
 import {
   cancelConfirmedBooking,
   createRefundCredit,
+  flagOrderAttention,
   getBooking,
+  type BookingRecord,
   getBookingSettings,
 } from "@/lib/booking/repo";
 import { canSelfManage } from "@/lib/booking/policy";
@@ -16,6 +18,28 @@ function json(body: unknown, status = 200) {
     status,
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
+}
+
+/** Refund credit, retried once (createRefundCredit is idempotent per order line); null after flagging the order. */
+async function refundWithRetry(booking: BookingRecord, userId: number, lessonId: number): Promise<string | null> {
+  const input = { userId, lessonId, orderItemId: booking.orderItemId };
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      return await createRefundCredit(input);
+    } catch (err) {
+      console.error(
+        `[bookings/cancel] refund credit attempt ${attempt} failed for booking ${booking.id} (order_item ${booking.orderItemId ?? "none"})`,
+        err,
+      );
+    }
+  }
+  if (booking.orderId) {
+    await flagOrderAttention(
+      booking.orderId,
+      `Refund credit for booking ${booking.id} could not be created — add 1 credit by hand.`,
+    ).catch((err) => console.error(`[bookings/cancel] could not flag order ${booking.orderId}`, err));
+  }
+  return null;
 }
 
 /**
@@ -42,15 +66,13 @@ export const POST: APIRoute = async ({ params, session }) => {
       return json({ error: "not_confirmed" }, 409);
     }
 
-    let creditId: string | null = null;
-    if (booking.source === "purchase" && booking.lessonId != null) {
-      creditId = await createRefundCredit({
-        userId: user.id,
-        lessonId: booking.lessonId,
-        orderItemId: booking.orderItemId,
-      });
-    }
-    return json({ ok: true, credit_id: creditId });
+    if (booking.source !== "purchase" || booking.lessonId == null) return json({ ok: true, credit_id: null });
+
+    // The cancel has committed, so a failed credit must not fail the request (a retry would get
+    // not_confirmed and the student would lose the lesson). Retry once, then hand it to Shaun.
+    const creditId = await refundWithRetry(booking, user.id, booking.lessonId);
+    if (creditId) return json({ ok: true, credit_id: creditId });
+    return json({ ok: true, credit_id: null, credit_pending: true });
   } catch (err) {
     console.error("[bookings/cancel]", err);
     return json({ error: "cancel failed" }, 500);

@@ -15,7 +15,7 @@ const iso = (ms: number) => new Date(ms).toISOString();
 const USER = 7;
 
 type Row = Record<string, unknown>;
-type Collection = "bookings" | "lesson_credits" | "lessons" | "availability";
+type Collection = "bookings" | "lesson_credits" | "lessons" | "availability" | "orders";
 
 const LESSONS: Row[] = [
   { id: 1, slug: "single-session", name: "Single Coaching Session", kind: "single", duration_minutes: 60, price: "90", requires_phone: false, status: "published" },
@@ -44,6 +44,8 @@ let db: Record<Collection, Row[]>;
 let seq = 0;
 /** Runs just before a bookings insert lands (lets a test slip in a competing row). */
 let beforeBookingInsert: (() => void) | null = null;
+/** Number of upcoming POST /items/lesson_credits calls that answer 503. */
+let failCreditPosts = 0;
 
 const ok = (data: unknown) => new Response(JSON.stringify({ data }), { status: 200 });
 const masked500 = () =>
@@ -114,6 +116,7 @@ function startDirectus() {
       const rows = db[coll];
       if (!rows) throw new Error(`unmocked collection ${coll}`);
 
+      if (method === "GET" && id) return ok(rows.find((r) => r.id === id) ?? null);
       if (method === "GET") {
         const filter = JSON.parse(url.searchParams.get("filter") ?? "null") as Row | undefined;
         const limit = Number(url.searchParams.get("limit") ?? "-1");
@@ -122,6 +125,10 @@ function startDirectus() {
         return ok(found.map((r) => expand(coll, r, url.searchParams.get("fields"))));
       }
       if (method === "POST") {
+        if (coll === "lesson_credits" && failCreditPosts > 0) {
+          failCreditPosts--;
+          return new Response(JSON.stringify({ errors: [{ message: "Service Unavailable" }] }), { status: 503 });
+        }
         if (coll === "bookings") {
           beforeBookingInsert?.();
           if (overlaps(body!.busy_start as string, body!.busy_end as string)) return masked500();
@@ -175,6 +182,7 @@ function seed(bookings: Row[], credits: Row[] = []) {
     lesson_credits: credits.map((c) => ({ ...c })),
     lessons: LESSONS,
     availability: [TUESDAY_BLOCK],
+    orders: [{ id: "order-1", user: USER, status: "paid", needs_attention: false, notes: "Paid via Square." }],
   };
 }
 
@@ -199,6 +207,7 @@ beforeEach(() => {
   process.env.DIRECTUS_TOKEN = "tok";
   seq = 0;
   beforeBookingInsert = null;
+  failCreditPosts = 0;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -232,6 +241,36 @@ describe("POST /api/bookings/:id/cancel", () => {
       status: "active",
       expires_at: expiry.toISOString(),
     });
+  });
+
+  it("a refund credit that fails twice still cancels, flags the order and reports credit_pending", async () => {
+    vi.setSystemTime(at("19:00") - 48 * H);
+    seed([booking()]);
+    failCreditPosts = 2;
+
+    const res = await read(await cancel(ctx({ id: "bk-1" })));
+
+    expect(res).toEqual({ status: 200, body: { ok: true, credit_id: null, credit_pending: true } });
+    expect(bookingRow("bk-1").status).toBe("cancelled");
+    expect(db.lesson_credits).toHaveLength(0);
+    expect(db.orders[0]).toMatchObject({
+      needs_attention: true,
+      notes: "Paid via Square.\nRefund credit for booking bk-1 could not be created — add 1 credit by hand.",
+    });
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("bk-1 (order_item oi-1)"), expect.anything());
+  });
+
+  it("a refund credit that fails once is retried and created", async () => {
+    vi.setSystemTime(at("19:00") - 48 * H);
+    seed([booking()]);
+    failCreditPosts = 1;
+
+    const res = await read(await cancel(ctx({ id: "bk-1" })));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, credit_id: db.lesson_credits[0].id });
+    expect(db.lesson_credits).toHaveLength(1);
+    expect(db.orders[0].needs_attention).toBe(false);
   });
 
   it("cancel 23h before returns too_late", async () => {
@@ -314,7 +353,7 @@ describe("POST /api/bookings/:id/reschedule", () => {
 
   it("moves the booking, keeping source/credit/order/order_item, and cancels the original", async () => {
     vi.setSystemTime(at("19:00") - 48 * H);
-    seed([booking()]);
+    seed([booking({ meet_link: "https://meet.google.com/abc", student_notes: "Bring the Coltrane chart" })]);
 
     const res = await read(await reschedule(ctx({ id: "bk-1", body: body("20:00") })));
 
@@ -329,6 +368,8 @@ describe("POST /api/bookings/:id/reschedule", () => {
       order_item: "oi-1",
       user: USER,
       lesson: 1,
+      meet_link: "https://meet.google.com/abc",
+      student_notes: "Bring the Coltrane chart",
     });
     expect(res.body!.when_label).toBe(moved.when_label);
     expect(bookingRow("bk-1")).toMatchObject({ status: "cancelled", cancel_reason: "rescheduled" });

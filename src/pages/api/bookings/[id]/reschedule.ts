@@ -71,6 +71,8 @@ export const POST: APIRoute = async ({ params, request, session }) => {
       creditId: booking.creditId ?? undefined,
       orderId: booking.orderId ?? undefined,
       orderItemId: booking.orderItemId ?? undefined,
+      meetLink: booking.meetLink,
+      studentNotes: booking.studentNotes,
       visitorTz: body.visitor_tz,
       settings,
     });

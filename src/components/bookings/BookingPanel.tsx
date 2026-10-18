@@ -35,11 +35,16 @@ type Props = { lessons: Lesson[]; horizonWeeks: number };
 /** `/bookings?reschedule=<booking id>&lesson=<slug>` (from /account) moves an existing lesson. */
 type Reschedule = { bookingId: string; slug: string };
 
-function readReschedule(singles: Lesson[]): Reschedule | null {
+/**
+ * `undefined` = no reschedule requested; `null` = requested but the lesson isn't a bookable
+ * single (missing/unpublished) — the panel then refuses rather than falling back to a purchase.
+ */
+function readReschedule(singles: Lesson[]): Reschedule | null | undefined {
   const q = new URLSearchParams(window.location.search);
   const bookingId = q.get("reschedule");
+  if (!bookingId) return undefined;
   const slug = q.get("lesson");
-  if (!bookingId || !slug || !singles.some((l) => l.slug === slug)) return null;
+  if (!slug || !singles.some((l) => l.slug === slug)) return null;
   return { bookingId, slug };
 }
 
@@ -47,6 +52,8 @@ const RESCHEDULE_ERRORS: Record<string, string> = {
   too_late: "It's too close to the lesson to move it online — please get in touch.",
   not_confirmed: "That lesson has already been changed. Check your account for the latest.",
   no_credits: "That credit has no lessons left to move onto this time.",
+  not_bookable:
+    "That time can't be booked. Times that overlap your current lesson can't be chosen — pick another time or get in touch.",
 };
 
 const MOBILE_QUERY = "(max-width: 799.98px)"; // below the site's `sm` (800px)
@@ -103,7 +110,8 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
   }
 
   // ── Lesson / credit selection ──────────────────────────────────────────
-  const [reschedule] = useState(() => readReschedule(singles));
+  const [rescheduleParam] = useState(() => readReschedule(singles));
+  const reschedule = rescheduleParam ?? null;
   const [mode, setMode] = useState<Mode | null>(() => {
     if (reschedule) return { type: "single", slug: reschedule.slug };
     return singles[0] ? { type: "single", slug: singles[0].slug } : null;
@@ -355,6 +363,17 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
   }
 
   // ── Render ─────────────────────────────────────────────────────────────
+  if (rescheduleParam === null) {
+    return (
+      <p className="booking-reschedule-unavailable rounded-[10px] bg-[rgb(244,242,238)] p-5 font-inconsolata text-sm text-red-600 dark:bg-neutral-900">
+        This lesson can't be moved online right now.{" "}
+        <a className="booking-reschedule-contact underline underline-offset-2" href="/contact">
+          Get in touch
+        </a>{" "}
+        and Shaun will sort out a new time.
+      </p>
+    );
+  }
   if (!singles.length) {
     return (
       <p className="booking-panel-empty text-sm text-muted-foreground">

@@ -37,6 +37,8 @@ export default function LessonsSection({ upcoming, past, credits, contact }: Pro
   const tz = initialTimeZone();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
+  const [cancelledIds, setCancelledIds] = useState<string[]>([]);
+  const shown = upcoming.filter((b) => !cancelledIds.includes(b.id));
 
   async function cancel(b: BookingView) {
     const label = when(b, tz).local;
@@ -48,9 +50,19 @@ export default function LessonsSection({ upcoming, past, credits, contact }: Pro
         method: "POST",
         credentials: "same-origin",
       });
-      const j = (await res.json().catch(() => ({}))) as { error?: string; credit_id?: string | null };
+      const j = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        credit_id?: string | null;
+        credit_pending?: boolean;
+      };
       if (!res.ok) {
         setNotice({ tone: "error", text: CANCEL_ERRORS[j.error ?? ""] ?? "Couldn't cancel. Please try again." });
+        return;
+      }
+      if (j.credit_pending) {
+        // Cancelled, but the refund credit is queued for Shaun — reloading would hide this message.
+        setCancelledIds((ids) => [...ids, b.id]);
+        setNotice({ tone: "info", text: "Cancelled — your credit is being added." });
         return;
       }
       window.location.reload();
@@ -79,11 +91,11 @@ export default function LessonsSection({ upcoming, past, credits, contact }: Pro
             Book a lesson
           </a>
         </div>
-        {upcoming.length === 0 ? (
+        {shown.length === 0 ? (
           <p className="lessons-upcoming-empty text-sm text-muted-foreground">No lessons booked.</p>
         ) : (
           <ul className="lessons-upcoming-list flex flex-col gap-3">
-            {upcoming.map((b) => {
+            {shown.map((b) => {
               const w = when(b, tz);
               return (
                 <li key={b.id} className="lesson-card rounded-md border p-4">
