@@ -161,24 +161,22 @@ Existing grants already use `fields: *` with no item filter, so they cover the n
 | `orders` | create / read / update | 57 / 58 / 59 | `needs_attention`, `notes` |
 | `users` | create / read / update | 110 / 111 / 112 | `phone`, `sms_opt_in` |
 
-**Still to add (PENDING — no admin credential was available to this task):**
+**Added 2026-10-19** with `POST /permissions` using an admin credential that Shaun authorised. Before posting, a check confirmed the policy had no existing grants for these collections. No item filter, validation or presets:
 
-| collection | action | fields | permissions / validation / presets |
+| id | collection | action | fields |
 |---|---|---|---|
-| `availability` | read | `*` | none |
-| `bookings` | create | `*` | none |
-| `bookings` | read | `*` | none |
-| `bookings` | update | `*` | none |
-| `lesson_credits` | create | `*` | none |
-| `lesson_credits` | read | `*` | none |
-| `lesson_credits` | update | `*` | none |
-| `globals` | read | `id,booking_min_notice_hours,booking_horizon_weeks,booking_padding_before_mins,booking_padding_after_mins,booking_hold_minutes,booking_slot_step_mins,booking_cancel_cutoff_hours,booking_notify_email` | none |
+| 118 | `availability` | read | `*` |
+| 119 | `bookings` | create | `*` |
+| 120 | `bookings` | read | `*` |
+| 121 | `bookings` | update | `*` |
+| 122 | `lesson_credits` | create | `*` |
+| 123 | `lesson_credits` | read | `*` |
+| 124 | `lesson_credits` | update | `*` |
+| 125 | `globals` | read | `id,booking_min_notice_hours,booking_horizon_weeks,booking_padding_before_mins,booking_padding_after_mins,booking_hold_minutes,booking_slot_step_mins,booking_cancel_cutoff_hours,booking_notify_email` |
 
-`globals` has no read grant at all today. The field list above deliberately leaves out `openai_api_key`.
+`globals` had no read grant before this. Its field list deliberately leaves out `openai_api_key` and the other site fields. A check of `directus_permissions` afterwards confirmed that only ids 118–125 were added.
 
-Add these in Studio (Settings → Access Policies → Production) or `POST /permissions` with an admin token, using `policy: "9f9decc2-0b4b-4020-bbc0-fe2396362ca5"`.
-
-### Verification (`curl -H "Authorization: Bearer $DIRECTUS_TOKEN"`, 2026-10-19)
+### Verification (`curl -H "Authorization: Bearer $DIRECTUS_TOKEN"`, 2026-10-19, after grants)
 
 | request | status |
 |---|---|
@@ -186,7 +184,9 @@ Add these in Studio (Settings → Access Policies → Production) or `POST /perm
 | `GET /items/orders?fields=id,needs_attention,notes&limit=1` | 200 |
 | `GET /items/order_items?fields=id,lesson,booking,product&limit=1` | 200 |
 | `GET /items/users?fields=id,phone,sms_opt_in&limit=1` | 200 |
-| `GET /items/globals?fields=booking_min_notice_hours,booking_notify_email` | **403** (pending grant) |
-| `GET /items/availability?limit=1` | **403** (pending grant) |
-| `GET /items/bookings?limit=1` | **403** (pending grant) |
-| `GET /items/lesson_credits?limit=1` | **403** (pending grant) |
+| `GET /items/globals?fields=id,booking_*` (all 8 fields) | 200 (values 24/8/0/0/15/30/24/shaun@shaunevans.com) |
+| `GET /items/availability?limit=1` | 200 |
+| `GET /items/bookings?limit=1` | 200 |
+| `GET /items/lesson_credits?limit=1` | 200 |
+| `GET /items/globals?fields=openai_api_key` | **403** — "You don't have permission to access field \"openai_api_key\"" |
+| `GET /items/globals` (no field list) | 200, returns only `id` + the 8 `booking_*` fields |
