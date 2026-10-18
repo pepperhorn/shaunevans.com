@@ -1,10 +1,17 @@
 ---
 const today = new Date();
 import { Icon } from "astro-icon/components";
+// On the homepage the footer floats over the full-bleed hero; elsewhere it
+// gets the header's frosted page background so body text doesn't show through.
+const { overlay = false } = Astro.props;
 ---
 
 <footer
-  class="fixed bottom-0 left-0 right-0 flex flex-col md:flex-row md:justify-between md:items-center font-overpass-mono w-full p-4 md:p-8 z-10 text-slate-900 dark:text-white"
+  class:list={[
+    "site-footer fixed bottom-0 left-0 right-0 flex flex-col md:flex-row md:justify-between md:items-center font-overpass-mono w-full p-4 md:px-8 md:py-5 z-10 text-slate-900 dark:text-white pb-[max(1rem,env(safe-area-inset-bottom))]",
+    !overlay &&
+      "site-footer-solid border-t border-black/5 dark:border-white/10 bg-[rgb(244,242,238)]/95 backdrop-blur dark:bg-[rgb(34,33,37)]/95",
+  ]}
 >
   <div class="text-[12px] text-center items-center flex justify-center mb-2 md:mb-0">
     &copy; {today.getFullYear()} Shaun Evans. All rights reserved.

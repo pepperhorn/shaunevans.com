@@ -167,7 +167,7 @@ const isHomePage = Astro.url.pathname === '/' || Astro.url.pathname === '/index.
     {!hideHeaderFooter && <Header is404Page={is404Page} />}
     <slot />
     <ScrollToTop client:load />
-    {!hideHeaderFooter && <Footer />}
+    {!hideHeaderFooter && <Footer overlay={isHomePage} />}
   </body>
 </html>
 <style is:global>

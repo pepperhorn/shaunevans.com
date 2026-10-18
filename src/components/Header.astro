@@ -12,14 +12,8 @@ const { is404Page = false } = Astro.props;
     {
       !is404Page && (
         <div class="flex items-center h-[30px]">
-          <a href="/" class="block">
-            <img
-              class="favicon dark:invert w-[30px] h-[30px]"
-              src="/logos/pathcircleinv.svg"
-              alt="Home"
-              width="30"
-              height="30"
-            />
+          <a href="/" class="header-logo block" aria-label="Home" transition:persist="header-logo">
+            <se-logo-loop class="header-logo-mark block w-[30px]" label="Shaun Evans — home"></se-logo-loop>
           </a>
         </div>
       )
@@ -52,3 +46,7 @@ const { is404Page = false } = Astro.props;
   <slot />
   {!is404Page && <CartSheet client:only="react" />}
 </header>
+
+<script>
+  import "@/scripts/se-logo-loop.js";
+</script>
