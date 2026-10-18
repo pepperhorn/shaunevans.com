@@ -2,8 +2,11 @@
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import CmsPageRenderer from "@/components/CmsPageRenderer.astro";
 import AccountAuthGate from "@/components/shop/AccountAuthGate";
-import { getOrdersForUser } from "@/lib/orders";
-import { getBookingsForEmail } from "@/lib/bookings";
+import LessonsSection from "@/components/account/LessonsSection";
+import { getOrdersForUser, getPurchasesForUser } from "@/lib/orders";
+import { getBookingsForEmail, getBookingsForUser, getLessonTimesByOrderItem } from "@/lib/bookings";
+import { getActiveCredits } from "@/lib/booking/repo";
+import { getUserContact } from "@/lib/auth";
 import { fetchPageByPermalink } from "@/lib/directus";
 
 export const prerender = false;
@@ -13,12 +16,30 @@ const sessUser = await Astro.session?.get<{ id: number; email: string; name: str
 let orders: Awaited<ReturnType<typeof getOrdersForUser>> = [];
 let bookings: Awaited<ReturnType<typeof getBookingsForEmail>> = [];
 let cmsPage: Awaited<ReturnType<typeof fetchPageByPermalink>> = null;
+let lessons: Awaited<ReturnType<typeof getBookingsForUser>> = { upcoming: [], past: [] };
+let credits: Awaited<ReturnType<typeof getActiveCredits>> = [];
+let contact: Awaited<ReturnType<typeof getUserContact>> = null;
+let purchases: Awaited<ReturnType<typeof getPurchasesForUser>> = [];
+let lessonTimes: Record<string, string> = {};
+
+/** A failed read renders that section empty instead of failing the page. */
+function orEmpty<T>(p: Promise<T>, fallback: T, what: string): Promise<T> {
+  return p.catch((err: unknown) => {
+    console.warn(`[account] ${what} failed:`, (err as Error).message);
+    return fallback;
+  });
+}
 
 if (sessUser) {
-  [orders, bookings, cmsPage] = await Promise.all([
+  [orders, bookings, cmsPage, lessons, credits, contact, purchases, lessonTimes] = await Promise.all([
     getOrdersForUser(sessUser.id).catch(() => []),
     getBookingsForEmail(sessUser.email).catch(() => []),
     fetchPageByPermalink("/account").catch(() => null),
+    orEmpty(getBookingsForUser(sessUser.id), { upcoming: [], past: [] }, "lessons"),
+    orEmpty(getActiveCredits(sessUser.id), [], "credits"),
+    orEmpty(getUserContact(sessUser.id), null, "contact"),
+    orEmpty(getPurchasesForUser(sessUser.id), [], "purchases"),
+    orEmpty(getLessonTimesByOrderItem(sessUser.id), {}, "lesson times"),
   ]);
 }
 
@@ -86,6 +107,47 @@ function statusColor(status: string): string {
             </section>
           )}
 
+          <section class="account-lessons mb-12">
+            <h2 class="font-overpass-mono text-xl uppercase mb-4">Lessons</h2>
+            <LessonsSection
+              upcoming={lessons.upcoming}
+              past={lessons.past}
+              credits={credits}
+              contact={contact}
+              client:only="react"
+            />
+          </section>
+
+          <section class="account-purchases mb-12">
+            <h2 class="font-overpass-mono text-xl uppercase mb-4">Purchases</h2>
+            {purchases.length === 0 ? (
+              <p class="purchases-empty text-sm text-muted-foreground">
+                No sheet music yet.{" "}
+                <a href="/shop/" class="underline">
+                  Browse the shop
+                </a>
+                .
+              </p>
+            ) : (
+              <ul class="purchase-list divide-y text-sm">
+                {purchases.map((p) => (
+                  <li class="purchase-item flex items-center justify-between gap-3 py-2">
+                    <div class="purchase-main min-w-0">
+                      <p class="purchase-name">
+                        {p.quantity > 1 ? `${p.quantity}× ` : ""}
+                        {p.name}
+                      </p>
+                      <p class="purchase-date text-xs text-muted-foreground">{fmtDate(p.date)}</p>
+                    </div>
+                    <span class={`status-chip rounded px-2 py-0.5 text-xs uppercase ${statusColor(p.orderStatus)}`}>
+                      {p.orderStatus.replace(/_/g, " ")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           <section class="account-orders mb-12">
             <h2 class="font-overpass-mono text-xl uppercase mb-4">Orders</h2>
             {orders.length === 0 ? (
@@ -115,9 +177,14 @@ function statusColor(status: string): string {
                     </div>
                     <ul class="order-lines text-sm divide-y mb-2">
                       {(o.items ?? []).map((line) => (
-                        <li class="flex justify-between gap-3 py-1.5">
-                          <span>
+                        <li class="order-line flex justify-between gap-3 py-1.5">
+                          <span class="order-line-name">
                             {line.quantity}× {line.name}
+                            {lessonTimes[line.id] && (
+                              <span class="order-line-when block text-xs text-muted-foreground">
+                                {lessonTimes[line.id]}
+                              </span>
+                            )}
                           </span>
                           <span class="tabular-nums">
                             {line.line_total} {o.currency}
@@ -142,17 +209,11 @@ function statusColor(status: string): string {
             )}
           </section>
 
-          <section class="account-bookings">
-            <h2 class="font-overpass-mono text-xl uppercase mb-4">Lesson bookings</h2>
-            {bookings.length === 0 ? (
-              <p class="text-sm text-muted-foreground">
-                No bookings yet.{" "}
-                <a href="/lessons/" class="underline">
-                  See lesson packages
-                </a>
-                .
-              </p>
-            ) : (
+          {bookings.length > 0 && (
+            <details class="account-bookings account-earlier-requests">
+              <summary class="earlier-requests-summary cursor-pointer font-overpass-mono text-sm uppercase mb-4">
+                Earlier requests ({bookings.length})
+              </summary>
               <ul class="booking-list flex flex-col gap-3">
                 {bookings.map((b) => (
                   <li class="booking-card rounded-md border p-4">
@@ -201,8 +262,8 @@ function statusColor(status: string): string {
                   </li>
                 ))}
               </ul>
-            )}
-          </section>
+            </details>
+          )}
         </>
       )
     }

@@ -5,6 +5,8 @@ import {
   getBookingSettings,
   getCreditOwner,
   getLessonById,
+  isCreditOverspent,
+  updateBookingStatus,
 } from "@/lib/booking/repo";
 
 export const prerender = false;
@@ -66,6 +68,14 @@ export const POST: APIRoute = async ({ request, session }) => {
       return result.reason === "conflict"
         ? json({ error: "slot_taken" }, 409)
         : json({ error: "not_bookable" }, 422);
+    }
+    // Two parallel requests can both pass the remaining > 0 check; the later loser backs out.
+    if (await isCreditOverspent(credit.id)) {
+      await updateBookingStatus(result.id, "cancelled", {
+        cancelled_at: new Date().toISOString(),
+        cancel_reason: "credit_overspent",
+      });
+      return json({ error: "no_credits" }, 409);
     }
     return json({ booking_id: result.id, when_label: result.whenLabel }, 201);
   } catch (err) {

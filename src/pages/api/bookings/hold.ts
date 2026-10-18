@@ -1,7 +1,10 @@
 import type { APIRoute } from "astro";
-import { createBooking, getBookingSettings, getLessonBySlug } from "@/lib/booking/repo";
+import { countLiveHolds, createBooking, getBookingSettings, getLessonBySlug } from "@/lib/booking/repo";
 
 export const prerender = false;
+
+/** Unexpired holds one user may have at once (stops a signed-in user blocking the grid). */
+const MAX_LIVE_HOLDS = 4;
 
 type SessionUser = { id: number; email: string; name: string | null };
 type HoldRequest = { lesson_slug?: string; start_at?: string; visitor_tz?: string };
@@ -33,6 +36,10 @@ export const POST: APIRoute = async ({ request, session }) => {
     const startAt = Date.parse(body.start_at ?? "");
     if (!body.lesson_slug || !Number.isFinite(startAt) || !isTimeZone(body.visitor_tz)) {
       return json({ error: "lesson_slug, start_at (ISO) and visitor_tz required" }, 400);
+    }
+
+    if ((await countLiveHolds(user.id)) >= MAX_LIVE_HOLDS) {
+      return json({ error: "too_many_holds" }, 429);
     }
 
     const lesson = await getLessonBySlug(body.lesson_slug);

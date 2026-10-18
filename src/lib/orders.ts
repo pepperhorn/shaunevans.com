@@ -326,3 +326,45 @@ export async function getOrderForUser(
     return null;
   }
 }
+
+export type Purchase = {
+  id: string;
+  name: string;
+  quantity: number;
+  orderId: string;
+  orderStatus: string;
+  date: string | null;
+};
+
+/** Sheet-music lines (order_items with a product) from the user's paid / fulfilled orders, newest first. */
+export async function getPurchasesForUser(userId: number): Promise<Purchase[]> {
+  const rows = await directusGet<
+    Array<{
+      id: string;
+      name: string;
+      quantity: number;
+      order: { id: string; status: string; paid_at: string | null; date_created: string | null } | null;
+    }>
+  >("/items/order_items", {
+    filter: JSON.stringify({
+      _and: [
+        { order: { user: { _eq: userId } } },
+        { order: { status: { _in: ["paid", "fulfilled"] } } },
+        { product: { _nnull: true } },
+      ],
+    }),
+    fields: "id,name,quantity,order.id,order.status,order.paid_at,order.date_created",
+    sort: "-order.date_created",
+    limit: "200",
+  });
+  return rows
+    .filter((r) => r.order)
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      quantity: r.quantity,
+      orderId: r.order!.id,
+      orderStatus: r.order!.status,
+      date: r.order!.paid_at ?? r.order!.date_created,
+    }));
+}

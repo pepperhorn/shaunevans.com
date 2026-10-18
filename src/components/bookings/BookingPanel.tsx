@@ -32,6 +32,23 @@ type Status = { tone: "error" | "info"; text: string } | null;
 
 type Props = { lessons: Lesson[]; horizonWeeks: number };
 
+/** `/bookings?reschedule=<booking id>&lesson=<slug>` (from /account) moves an existing lesson. */
+type Reschedule = { bookingId: string; slug: string };
+
+function readReschedule(singles: Lesson[]): Reschedule | null {
+  const q = new URLSearchParams(window.location.search);
+  const bookingId = q.get("reschedule");
+  const slug = q.get("lesson");
+  if (!bookingId || !slug || !singles.some((l) => l.slug === slug)) return null;
+  return { bookingId, slug };
+}
+
+const RESCHEDULE_ERRORS: Record<string, string> = {
+  too_late: "It's too close to the lesson to move it online — please get in touch.",
+  not_confirmed: "That lesson has already been changed. Check your account for the latest.",
+  no_credits: "That credit has no lessons left to move onto this time.",
+};
+
 const MOBILE_QUERY = "(max-width: 799.98px)"; // below the site's `sm` (800px)
 
 function useIsMobile(): boolean {
@@ -86,7 +103,11 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
   }
 
   // ── Lesson / credit selection ──────────────────────────────────────────
-  const [mode, setMode] = useState<Mode | null>(() => (singles[0] ? { type: "single", slug: singles[0].slug } : null));
+  const [reschedule] = useState(() => readReschedule(singles));
+  const [mode, setMode] = useState<Mode | null>(() => {
+    if (reschedule) return { type: "single", slug: reschedule.slug };
+    return singles[0] ? { type: "single", slug: singles[0].slug } : null;
+  });
   const [credits, setCredits] = useState<Credit[]>([]);
 
   const loadCredits = useCallback(async () => {
@@ -121,11 +142,12 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
   useEffect(() => {
     const onPick = (e: Event) => {
       const slug = (e as CustomEvent<{ slug: string }>).detail?.slug;
+      if (reschedule) return; // locked to the lesson being moved
       if (singles.some((l) => l.slug === slug)) setMode({ type: "single", slug });
     };
     window.addEventListener(PICK_LESSON_EVENT, onPick);
     return () => window.removeEventListener(PICK_LESSON_EVENT, onPick);
-  }, [singles]);
+  }, [singles, reschedule]);
 
   // ── Visible days ───────────────────────────────────────────────────────
   const today = zonedParts(Date.now(), tz).date;
@@ -264,6 +286,24 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
     try {
       if (!(await saveContactIfChanged())) return;
       const startIso = new Date(selected).toISOString();
+      if (reschedule) {
+        const r = await postJson(`/api/bookings/${encodeURIComponent(reschedule.bookingId)}/reschedule`, {
+          start_at: startIso,
+          visitor_tz: tz,
+        });
+        if (r.status === 401) return setAuthOpen(true);
+        if (r.status === 409 && r.body.error === "slot_taken") return onTaken();
+        if (!r.ok) {
+          const msg = RESCHEDULE_ERRORS[String(r.body.error ?? "")] ?? "That time can't be booked any more. Please pick another.";
+          setStatus({ tone: "error", text: msg });
+          setSelected(null);
+          refetch();
+          return;
+        }
+        setBooked(String(r.body.when_label ?? sel?.local ?? ""));
+        setSelected(null);
+        return;
+      }
       if (activeCredit) {
         const r = await postJson("/api/bookings/credit", { credit_id: activeCredit.id, start_at: startIso, visitor_tz: tz });
         if (r.status === 401) return setAuthOpen(true);
@@ -333,18 +373,24 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
   if (booked) {
     return (
       <div className="booking-confirmed space-y-3 rounded-[10px] bg-[rgb(244,242,238)] p-5 font-inconsolata text-[#1f1d1e] dark:bg-neutral-900 dark:text-neutral-100">
-        <h3 className="booking-confirmed-title font-overpass-mono text-lg tracking-tight">You're booked</h3>
+        <h3 className="booking-confirmed-title font-overpass-mono text-lg tracking-tight">
+          {reschedule ? "Lesson moved" : "You're booked"}
+        </h3>
         <p className="booking-confirmed-when text-sm">{booked}</p>
         <p className="booking-confirmed-note text-sm text-[#6b6668] dark:text-neutral-400">
-          A confirmation email is on its way. The lesson link is sent before your session.
+          {reschedule
+            ? "Your old time has been released. The lesson link is sent before your session."
+            : "A confirmation email is on its way. The lesson link is sent before your session."}
         </p>
         <div className="booking-confirmed-actions flex flex-wrap gap-2">
           <Button asChild size="sm" className="btn-booking-account">
             <a href="/account">View in your account</a>
           </Button>
-          <Button size="sm" variant="outline" className="btn-booking-another" onClick={() => setBooked(null)}>
-            Book another
-          </Button>
+          {!reschedule && (
+            <Button size="sm" variant="outline" className="btn-booking-another" onClick={() => setBooked(null)}>
+              Book another
+            </Button>
+          )}
         </div>
       </div>
     );
@@ -352,40 +398,51 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
 
   return (
     <div className="booking-panel rounded-[10px] bg-[rgb(244,242,238)] p-4 font-inconsolata text-[13px] text-[#1f1d1e] sm:p-5 dark:bg-neutral-900 dark:text-neutral-100">
-      <h3 className="booking-panel-title mb-2 font-overpass-mono text-base tracking-tight">Pick a time</h3>
+      <h3 className="booking-panel-title mb-2 font-overpass-mono text-base tracking-tight">
+        {reschedule ? "Pick a new time" : "Pick a time"}
+      </h3>
 
-      <div className="booking-mode-list flex flex-wrap gap-2" role="radiogroup" aria-label="Lesson">
-        {singles.map((l) => {
-          const on = mode?.type === "single" && mode.slug === l.slug;
-          return (
-            <button
-              key={l.slug}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              className={pill(on)}
-              onClick={() => setMode({ type: "single", slug: l.slug })}
-            >
-              {l.name} · {l.durationMinutes} min
-            </button>
-          );
-        })}
-        {usableCredits.map((c) => {
-          const on = mode?.type === "credit" && mode.creditId === c.id;
-          return (
-            <button
-              key={c.id}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              className={pill(on)}
-              onClick={() => setMode({ type: "credit", creditId: c.id })}
-            >
-              Use a credit — {c.packName} ({c.remaining} left{c.expiresAt ? `, expires ${shortDate(c.expiresAt)}` : ""})
-            </button>
-          );
-        })}
-      </div>
+      {reschedule ? (
+        <p className="booking-reschedule-note text-xs text-[#6b6668] dark:text-neutral-400">
+          Moving your {lesson?.name ?? "lesson"}. Your current time stays booked until you choose a new one ·{" "}
+          <a href="/account" className="booking-reschedule-keep underline underline-offset-2">
+            keep current time
+          </a>
+        </p>
+      ) : (
+        <div className="booking-mode-list flex flex-wrap gap-2" role="radiogroup" aria-label="Lesson">
+          {singles.map((l) => {
+            const on = mode?.type === "single" && mode.slug === l.slug;
+            return (
+              <button
+                key={l.slug}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                className={pill(on)}
+                onClick={() => setMode({ type: "single", slug: l.slug })}
+              >
+                {l.name} · {l.durationMinutes} min
+              </button>
+            );
+          })}
+          {usableCredits.map((c) => {
+            const on = mode?.type === "credit" && mode.creditId === c.id;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                className={pill(on)}
+                onClick={() => setMode({ type: "credit", creditId: c.id })}
+              >
+                Use a credit — {c.packName} ({c.remaining} left{c.expiresAt ? `, expires ${shortDate(c.expiresAt)}` : ""})
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="booking-tz mt-3 text-xs text-[#6b6668] dark:text-neutral-400">
         Times in{" "}
@@ -563,7 +620,7 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
             disabled={busy || sess.status === "loading"}
             onClick={onAction}
           >
-            {busy ? "Working…" : activeCredit ? "Book with credit" : "Add to cart"}
+            {busy ? "Working…" : reschedule ? "Move lesson here" : activeCredit ? "Book with credit" : "Add to cart"}
           </Button>
         </div>
       )}

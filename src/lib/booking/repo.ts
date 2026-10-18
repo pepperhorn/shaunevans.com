@@ -331,6 +331,8 @@ export type BookingRecord = {
   holdExpiresAt: string | null;
   source: "purchase" | "credit";
   creditId: string | null;
+  orderId: string | null;
+  orderItemId: string | null;
   whenLabel: string | null;
 };
 
@@ -338,7 +340,7 @@ export async function getBooking(id: string): Promise<BookingRecord | null> {
   const rows = await request<Array<Record<string, unknown>>>("GET", "/items/bookings", {
     params: {
       filter: JSON.stringify({ id: { _eq: id } }),
-      fields: "id,status,user,lesson,start_at,end_at,hold_expires_at,source,credit,when_label",
+      fields: "id,status,user,lesson,start_at,end_at,hold_expires_at,source,credit,order,order_item,when_label",
       limit: "1",
     },
   });
@@ -354,6 +356,8 @@ export async function getBooking(id: string): Promise<BookingRecord | null> {
     holdExpiresAt: (r.hold_expires_at as string | null) ?? null,
     source: r.source as BookingRecord["source"],
     creditId: (r.credit as string | null) ?? null,
+    orderId: (r.order as string | null) ?? null,
+    orderItemId: (r.order_item as string | null) ?? null,
     whenLabel: (r.when_label as string | null) ?? null,
   };
 }
@@ -367,6 +371,36 @@ export async function updateBookingStatus(
     params: { fields: "id" },
     body: { ...extra, status },
   });
+}
+
+/**
+ * Compare-and-set a confirmed booking to cancelled. Returns false when the row was no longer
+ * `confirmed` (a parallel cancel/reschedule won), so callers never act twice on one booking.
+ */
+export async function cancelConfirmedBooking(id: string, reason: string): Promise<boolean> {
+  const rows = await request<Array<{ id: string }>>("PATCH", "/items/bookings", {
+    params: { fields: "id" },
+    body: {
+      query: { filter: { _and: [{ id: { _eq: id } }, { status: { _eq: "confirmed" } }] }, limit: 1 },
+      data: { status: "cancelled", cancelled_at: iso(Date.now()), cancel_reason: reason },
+    },
+  });
+  return Array.isArray(rows) && rows.some((r) => r.id === id);
+}
+
+/** The user's unexpired holds (the hold route caps these). */
+export async function countLiveHolds(userId: number): Promise<number> {
+  const now = Date.now();
+  const rows = await request<Array<{ hold_expires_at: string | null }>>("GET", "/items/bookings", {
+    params: {
+      filter: JSON.stringify({
+        _and: [{ user: { _eq: userId } }, { status: { _eq: "held" } }, { hold_expires_at: { _gt: iso(now) } }],
+      }),
+      fields: "hold_expires_at",
+      limit: "-1",
+    },
+  });
+  return rows.filter((r) => !!r.hold_expires_at && Date.parse(r.hold_expires_at) > now).length;
 }
 
 // ── Credits ─────────────────────────────────────────────────────────────────
@@ -427,4 +461,61 @@ export async function getActiveCredits(userId: number): Promise<ActiveCredit[]> 
       expiresAt: c.expires_at ?? "",
     }))
     .filter((c) => c.remaining > 0);
+}
+
+/**
+ * Whether a credit is now booked beyond its total (two parallel credit bookings both passed the
+ * remaining > 0 check). `excludeBookingId` leaves out a booking that is about to be cancelled
+ * (the original of a reschedule).
+ */
+export async function isCreditOverspent(creditId: string, excludeBookingId?: string): Promise<boolean> {
+  const credits = await request<Array<{ credits_total: number }>>("GET", "/items/lesson_credits", {
+    params: { filter: JSON.stringify({ id: { _eq: creditId } }), fields: "credits_total", limit: "1" },
+  });
+  if (!credits[0]) return true;
+  const used = await request<Array<{ id: string; status: BookingStatus }>>("GET", "/items/bookings", {
+    params: {
+      filter: JSON.stringify({ credit: { _eq: creditId }, status: { _in: CONSUMING } }),
+      fields: "id,status",
+      limit: "-1",
+    },
+  });
+  const n = used.filter((b) => b.id !== excludeBookingId && CONSUMING.includes(b.status)).length;
+  return n > credits[0].credits_total;
+}
+
+/**
+ * One make-good credit for a cancelled paid single (pack null). Idempotent per order line:
+ * returns the existing refund credit for `orderItemId` instead of adding a second one.
+ */
+export async function createRefundCredit(input: {
+  userId: number;
+  lessonId: number;
+  orderItemId: string | null;
+}): Promise<string> {
+  if (input.orderItemId) {
+    const existing = await request<Array<{ id: string }>>("GET", "/items/lesson_credits", {
+      params: {
+        filter: JSON.stringify({ order_item: { _eq: input.orderItemId }, pack: { _null: true } }),
+        fields: "id",
+        limit: "1",
+      },
+    });
+    if (existing[0]) return existing[0].id;
+  }
+  const expires = new Date(Date.now());
+  expires.setUTCMonth(expires.getUTCMonth() + 12);
+  const created = await request<{ id: string }>("POST", "/items/lesson_credits", {
+    params: { fields: "id" },
+    body: {
+      status: "active",
+      user: input.userId,
+      lesson: input.lessonId,
+      pack: null,
+      order_item: input.orderItemId,
+      credits_total: 1,
+      expires_at: expires.toISOString(),
+    },
+  });
+  return created.id;
 }
