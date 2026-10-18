@@ -1,3 +1,8 @@
+import { getProducts } from "@/lib/catalog";
+import { getBooking, getLessonById } from "@/lib/booking/repo";
+import { getUserContact, type UserContact } from "@/lib/auth";
+import type { CheckoutItem } from "@/lib/cart";
+
 function directusBase(): string {
   const url = import.meta.env.DIRECTUS_URL as string | undefined;
   if (!url) throw new Error("DIRECTUS_URL not set");
@@ -58,8 +63,11 @@ async function directusGet<T>(path: string, params: Record<string, string> = {})
   return json.data;
 }
 
-export type NewOrderLine = {
-  product_id: string;
+/** One resolved order line: a product, a held lesson booking, or a lesson pack. */
+export type OrderLineInput = {
+  product_id?: string;
+  lesson_id?: number;
+  booking_id?: string;
   name: string;
   slug: string;
   unit_price: number;
@@ -70,7 +78,7 @@ export type NewOrderInput = {
   user_id: number;
   email: string;
   currency: string;
-  lines: NewOrderLine[];
+  lines: OrderLineInput[];
 };
 
 export type Order = {
@@ -89,7 +97,10 @@ export type Order = {
   delivered_at: string | null;
 };
 
-export async function createOrder(input: NewOrderInput): Promise<Order> {
+/** The created order plus the ids of its order_items (with the booking each one carries). */
+export type CreatedOrder = Order & { lines: Array<{ id: string; booking: string | null }> };
+
+export async function createOrder(input: NewOrderInput): Promise<CreatedOrder> {
   // Australian GST 10%, included in displayed prices. The customer pays the
   // displayed (GST-incl) price exactly; we back-calculate the GST component.
   // Work in cents to avoid float drift on toFixed.
@@ -114,17 +125,128 @@ export async function createOrder(input: NewOrderInput): Promise<Order> {
     total,
   });
 
-  await directusPost("/items/order_items", input.lines.map((l) => ({
-    order: order.id,
-    product: l.product_id,
-    name: l.name,
-    slug: l.slug,
-    unit_price: l.unit_price.toFixed(2),
-    quantity: l.quantity,
-    line_total: (l.unit_price * l.quantity).toFixed(2),
-  })));
+  const created = await directusPost<Array<{ id: string; booking: string | null }>>(
+    "/items/order_items?fields=id,booking",
+    input.lines.map((l) => ({
+      order: order.id,
+      product: l.product_id ?? null,
+      lesson: l.lesson_id ?? null,
+      booking: l.booking_id ?? null,
+      name: l.name,
+      slug: l.slug,
+      unit_price: l.unit_price.toFixed(2),
+      quantity: l.quantity,
+      line_total: (l.unit_price * l.quantity).toFixed(2),
+    })),
+  );
 
-  return order;
+  return { ...order, lines: created.map((c) => ({ id: c.id, booking: c.booking ?? null })) };
+}
+
+/** Point each held booking in the order at its order + order_item (Task 8 confirms them on payment). */
+export async function linkBookingsToOrder(order: CreatedOrder): Promise<void> {
+  await Promise.all(
+    order.lines
+      .filter((l) => l.booking)
+      .map((l) =>
+        directusPatch(`/items/bookings/${encodeURIComponent(l.booking!)}?fields=id`, {
+          order: order.id,
+          order_item: l.id,
+        }),
+      ),
+  );
+}
+
+// ── Checkout line resolution ────────────────────────────────────────────────
+
+export type { CheckoutItem };
+
+/** A checkout request the buyer must fix; `body` is returned as JSON with `status`. */
+export class CheckoutError extends Error {
+  status: number;
+  body: Record<string, unknown>;
+  constructor(status: number, body: Record<string, unknown>) {
+    super(String(body.error));
+    this.name = "CheckoutError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+/**
+ * Turn the cart's checkout items into priced order lines, using server-side
+ * prices only. Throws CheckoutError for holds that are gone / not the
+ * caller's (409 hold_expired), packs that need a phone (400 phone_required),
+ * and unknown items (400).
+ */
+export async function resolveCheckoutLines(
+  items: CheckoutItem[],
+  userId: number,
+): Promise<OrderLineInput[]> {
+  let contact: Promise<UserContact | null> | null = null;
+  const seenBookings = new Set<string>();
+  const lines: OrderLineInput[] = [];
+
+  for (const item of items) {
+    if (item.kind === "lesson_booking") {
+      if (seenBookings.has(item.booking_id)) continue;
+      seenBookings.add(item.booking_id);
+      const expired = new CheckoutError(409, { error: "hold_expired", booking_id: item.booking_id });
+      const booking = typeof item.booking_id === "string" ? await getBooking(item.booking_id) : null;
+      if (
+        !booking ||
+        booking.userId !== userId ||
+        booking.status !== "held" ||
+        !booking.holdExpiresAt ||
+        Date.parse(booking.holdExpiresAt) <= Date.now() ||
+        booking.lessonId == null
+      ) {
+        throw expired;
+      }
+      const lesson = await getLessonById(booking.lessonId);
+      if (!lesson || lesson.kind !== "single") throw expired;
+      lines.push({
+        lesson_id: lesson.id,
+        booking_id: booking.id,
+        name: booking.whenLabel ? `${lesson.name} — ${booking.whenLabel}` : lesson.name,
+        slug: lesson.slug,
+        unit_price: lesson.price,
+        quantity: 1,
+      });
+    } else if (item.kind === "lesson_pack") {
+      const lesson = Number.isInteger(item.lesson_id) ? await getLessonById(item.lesson_id) : null;
+      if (!lesson || lesson.kind !== "pack") {
+        throw new CheckoutError(400, { error: "not_purchasable", lesson_id: item.lesson_id });
+      }
+      if (lesson.requiresPhone) {
+        contact ??= getUserContact(userId);
+        if (!(await contact)?.phone) throw new CheckoutError(400, { error: "phone_required" });
+      }
+      lines.push({
+        lesson_id: lesson.id,
+        name: lesson.name,
+        slug: lesson.slug,
+        unit_price: lesson.price,
+        quantity: 1,
+      });
+    } else {
+      // Missing kind = product (pre-booking carts).
+      const products = await getProducts();
+      // Cart lines carry the product id; older carts may carry the slug.
+      const product =
+        products.find((p) => p.id === item.product_id) ??
+        products.find((p) => p.slug === item.product_id);
+      if (!product) throw new CheckoutError(400, { error: "unknown_product", product_id: item.product_id });
+      lines.push({
+        product_id: product.id,
+        name: product.name,
+        slug: product.slug,
+        unit_price: product.price,
+        quantity: Math.max(1, Math.floor(Number(item.quantity) || 1)),
+      });
+    }
+  }
+  return lines;
 }
 
 export async function attachPaymentSession(

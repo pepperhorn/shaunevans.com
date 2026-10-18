@@ -109,6 +109,7 @@ export type BookableLesson = {
   kind: "single" | "pack" | "contact" | null;
   durationMinutes: number | null;
   price: number;
+  requiresPhone: boolean;
 };
 
 type RawLesson = {
@@ -118,9 +119,10 @@ type RawLesson = {
   kind: BookableLesson["kind"];
   duration_minutes: number | null;
   price: number | string | null;
+  requires_phone: boolean | null;
 };
 
-const LESSON_FIELDS = "id,slug,name,kind,duration_minutes,price";
+const LESSON_FIELDS = "id,slug,name,kind,duration_minutes,price,requires_phone";
 
 function toLesson(l: RawLesson): BookableLesson {
   return {
@@ -130,6 +132,7 @@ function toLesson(l: RawLesson): BookableLesson {
     kind: l.kind,
     durationMinutes: l.duration_minutes,
     price: Number(l.price ?? 0),
+    requiresPhone: l.requires_phone === true,
   };
 }
 

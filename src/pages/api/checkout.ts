@@ -1,48 +1,40 @@
 import type { APIRoute } from "astro";
-import { getProduct } from "@/lib/catalog";
-import { createOrder, attachPaymentSession } from "@/lib/orders";
+import {
+  createOrder,
+  attachPaymentSession,
+  linkBookingsToOrder,
+  resolveCheckoutLines,
+  CheckoutError,
+  type CheckoutItem,
+} from "@/lib/orders";
 import { getPaymentProvider } from "@/lib/payments";
 
 export const prerender = false;
 
 type CheckoutRequest = {
-  items: Array<{ product_id: string; quantity: number }>;
+  items: CheckoutItem[];
   currency?: string;
 };
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 export const POST: APIRoute = async ({ request, session, url }) => {
   try {
     const sessUser = await session?.get<{ id: number; email: string; name: string | null }>("user");
-    if (!sessUser) {
-      return new Response(JSON.stringify({ error: "auth required" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    if (!sessUser) return json({ error: "auth required" }, 401);
 
     const body = (await request.json()) as CheckoutRequest;
     if (!Array.isArray(body.items) || body.items.length === 0) {
-      return new Response(JSON.stringify({ error: "empty cart" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return json({ error: "empty cart" }, 400);
     }
 
     const currency = body.currency ?? "AUD";
-    const resolved = await Promise.all(
-      body.items.map(async (i) => {
-        const product = await getProduct(i.product_id);
-        if (!product) throw new Error(`unknown product: ${i.product_id}`);
-        const quantity = Math.max(1, Math.floor(i.quantity));
-        return {
-          product_id: product.id,
-          name: product.name,
-          slug: product.slug,
-          unit_price: product.price,
-          quantity,
-        };
-      }),
-    );
+    const resolved = await resolveCheckoutLines(body.items, sessUser.id);
 
     const order = await createOrder({
       user_id: sessUser.id,
@@ -50,6 +42,7 @@ export const POST: APIRoute = async ({ request, session, url }) => {
       currency,
       lines: resolved,
     });
+    await linkBookingsToOrder(order);
 
     const provider = getPaymentProvider();
     const link = await provider.createPaymentLink({
@@ -66,14 +59,9 @@ export const POST: APIRoute = async ({ request, session, url }) => {
 
     await attachPaymentSession(order.id, provider.name, link.session_id);
 
-    return new Response(
-      JSON.stringify({ ok: true, order_id: order.id, redirect_url: link.url }),
-      { headers: { "Content-Type": "application/json" } },
-    );
+    return json({ ok: true, order_id: order.id, redirect_url: link.url });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: (err as Error).message }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
+    if (err instanceof CheckoutError) return json(err.body, err.status);
+    return json({ error: (err as Error).message }, 500);
   }
 };

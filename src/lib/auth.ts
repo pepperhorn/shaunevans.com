@@ -203,6 +203,25 @@ export async function markUserVerified(id: string | number): Promise<void> {
   if (!res.ok) throw new Error(`users update failed: ${res.status} ${await res.text()}`);
 }
 
+export type UserContact = { phone: string | null; sms_opt_in: boolean };
+
+export async function getUserContact(id: string | number): Promise<UserContact | null> {
+  const res = await directusUsers(`/items/users/${encodeURIComponent(String(id))}?fields=phone,sms_opt_in`);
+  if (res.status === 404 || res.status === 403) return null;
+  if (!res.ok) throw new Error(`users read failed: ${res.status} ${await res.text()}`);
+  const row = ((await res.json()) as { data?: { phone?: string | null; sms_opt_in?: boolean | null } | null }).data;
+  return row ? { phone: row.phone || null, sms_opt_in: row.sms_opt_in === true } : null;
+}
+
+/** PATCHes only `phone` + `sms_opt_in` on the user's row. */
+export async function updateUserContact(id: string | number, contact: UserContact): Promise<void> {
+  const res = await directusUsers(`/items/users/${encodeURIComponent(String(id))}?fields=id`, {
+    method: "PATCH",
+    body: JSON.stringify({ phone: contact.phone, sms_opt_in: contact.sms_opt_in }),
+  });
+  if (!res.ok) throw new Error(`users update failed: ${res.status} ${await res.text()}`);
+}
+
 // ── Astro session shapes ───────────────────────────────────────────────────
 
 /** Stored at `session.get("user")` — shape relied on by checkout/account/confirmation. */
