@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { updateUserContact } from "@/lib/auth";
+import { getUserContact, updateUserContact } from "@/lib/auth";
 import { normalizePhone } from "@/lib/phone";
 
 export const prerender = false;
@@ -13,6 +13,19 @@ function json(body: unknown, status = 200) {
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
 }
+
+/** The signed-in user's phone + SMS opt-in (prefills the booking summary bar). */
+export const GET: APIRoute = async ({ session }) => {
+  try {
+    const user = await session?.get<SessionUser>("user");
+    if (!user) return json({ error: "auth required" }, 401);
+    const contact = await getUserContact(user.id);
+    return json(contact ?? { phone: null, sms_opt_in: false });
+  } catch (err) {
+    console.error("[account/contact]", err);
+    return json({ error: "read failed" }, 500);
+  }
+};
 
 /** Save the signed-in user's phone (E.164) and SMS opt-in. Empty phone clears both. */
 export const POST: APIRoute = async ({ request, session }) => {

@@ -1,11 +1,18 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import LessonCard from "../../components/bookings/LessonCard.tsx";
-import BookingForm from "../../components/bookings/BookingForm.tsx";
+import BookingPanel from "@/components/bookings/BookingPanel.tsx";
 import { Badge } from "../../components/ui/badge.tsx";
 import { getLessons } from "@/lib/catalog";
+import { DEFAULT_SETTINGS } from "@/lib/booking/slots";
 
 const lessons = await getLessons();
+// Prerendered page: read the horizon at build time; without CMS env use the default.
+let horizonWeeks = DEFAULT_SETTINGS.horizonWeeks;
+if (import.meta.env.DIRECTUS_URL && import.meta.env.DIRECTUS_TOKEN) {
+  const { getBookingSettings } = await import("@/lib/booking/repo");
+  horizonWeeks = (await getBookingSettings()).horizonWeeks;
+}
 
 const pageTitle = "Bookings & Lessons | ShaunEvans.com";
 const description =
@@ -26,9 +33,8 @@ const description =
         Lessons, mentorship, and intensives.
       </h1>
       <p class="text-base text-gray-700 dark:text-gray-300 sm:text-lg">
-        Choose a package below and send a booking request. Shaun will confirm a
-        time and send a calendar invite within two business days. Lessons run
-        over Zoom unless otherwise noted.
+        Pick a time that suits you for a single session, or buy a pack and book
+        each lesson with a credit. Times are shown in your own time zone.
       </p>
     </header>
 
@@ -48,8 +54,12 @@ const description =
       </div>
     </section>
 
-    <section class="mx-auto max-w-2xl">
-      <BookingForm lessons={lessons} client:load />
+    <section id="booking-panel" class="booking-panel-section mx-auto max-w-4xl scroll-mt-24">
+      <BookingPanel lessons={lessons} horizonWeeks={horizonWeeks} client:only="react" />
+      <p class="booking-help-link mt-4 text-sm text-gray-700 dark:text-gray-300">
+        Not sure which package?
+        <a href="/contact" class="underline underline-offset-2">Get in touch</a>.
+      </p>
     </section>
 
     <section class="mx-auto mt-16 max-w-2xl space-y-3 text-sm text-gray-700 dark:text-gray-300">
@@ -59,12 +69,13 @@ const description =
         How it works
       </h2>
       <ol class="ml-4 list-decimal space-y-2">
-        <li>Pick a package and submit the form.</li>
-        <li>Shaun replies within two business days with proposed times.</li>
+        <li>Pick a time in the calendar and add it to your cart (or book with a pack credit).</li>
+        <li>Check out — the time is held for you while you pay.</li>
+        <li>You get a confirmation email, and the lesson link before your session.</li>
         <li>
-          You confirm a slot and pay via the link in the confirmation email.
+          Need to change? Cancel or reschedule from your account up to 24 hours
+          before the lesson.
         </li>
-        <li>You get a calendar invite with the Zoom link or studio address.</li>
       </ol>
     </section>
   </div>

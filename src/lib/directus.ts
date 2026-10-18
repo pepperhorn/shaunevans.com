@@ -94,6 +94,9 @@ type RawLesson = {
   price_from: boolean | null;
   currency: string | null;
   booking_mode: string | null;
+  kind: string | null;
+  duration_minutes: number | null;
+  credits: number | null;
 };
 
 import type { Lesson } from "@/data/lessons";
@@ -347,7 +350,7 @@ export async function fetchLessons(): Promise<Lesson[]> {
   const items = await directusFetch<RawLesson[]>("/items/lessons", {
     "filter[status][_eq]": "published",
     "fields[]":
-      "id,name,slug,price,duration,format,tagline,description,includes,popular,price_from,currency,booking_mode",
+      "id,name,slug,price,duration,format,tagline,description,includes,popular,price_from,currency,booking_mode,kind,duration_minutes,credits",
     sort: "sort,id",
     limit: "50",
   });
@@ -365,6 +368,9 @@ export async function fetchLessons(): Promise<Lesson[]> {
     priceFrom: l.price_from ?? false,
     currency: l.currency || null,
     bookingMode: l.booking_mode === "contact" ? "contact" : "book",
+    kind: l.kind === "single" || l.kind === "pack" || l.kind === "contact" ? l.kind : undefined,
+    durationMinutes: l.duration_minutes ?? null,
+    credits: l.credits ?? null,
   }));
 }
 
