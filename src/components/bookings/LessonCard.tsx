@@ -31,12 +31,17 @@ export default function LessonCard({ lesson }: { lesson: Lesson }) {
         <p className="text-sm text-muted-foreground">{lesson.tagline}</p>
       </CardHeader>
       <CardContent className="flex-1 space-y-4">
-        <div className="flex items-baseline gap-1">
+        <div className="lesson-price flex items-baseline gap-1">
+          {lesson.priceFrom && (
+            <span className="lesson-price-from text-sm text-muted-foreground">from</span>
+          )}
           <span className="text-3xl font-bold tabular-nums">
             ${lesson.price}
           </span>
-          {lesson.id === "l_004" && (
-            <span className="text-xs text-muted-foreground">SGD</span>
+          {lesson.currency && (
+            <span className="lesson-price-currency text-xs text-muted-foreground">
+              {lesson.currency}
+            </span>
           )}
         </div>
         <p className="text-sm text-muted-foreground">{lesson.description}</p>
@@ -50,6 +55,15 @@ export default function LessonCard({ lesson }: { lesson: Lesson }) {
         </ul>
       </CardContent>
       <CardFooter>
+        {lesson.bookingMode === "contact" ? (
+          <Button
+            asChild
+            className="lesson-contact-btn w-full"
+            variant={lesson.popular ? "default" : "outline"}
+          >
+            <a href="/contact">Contact Shaun</a>
+          </Button>
+        ) : (
         <Button
           className="w-full"
           variant={lesson.popular ? "default" : "outline"}
@@ -67,6 +81,7 @@ export default function LessonCard({ lesson }: { lesson: Lesson }) {
         >
           Book this package
         </Button>
+        )}
       </CardFooter>
     </Card>
   );

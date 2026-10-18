@@ -9,6 +9,12 @@ export type Lesson = {
   description: string;
   includes: string[];
   popular?: boolean;
+  /** Render the price as a starting price ("from $400"). */
+  priceFrom?: boolean;
+  /** Optional currency label after the price, e.g. "SGD". */
+  currency?: string | null;
+  /** "contact" shows a Contact Shaun link instead of booking, and is left out of the booking form. */
+  bookingMode?: "book" | "contact";
 };
 
 export const lessons: Lesson[] = [
@@ -67,7 +73,9 @@ export const lessons: Lesson[] = [
     id: "l_004",
     slug: "in-person-intensive",
     name: "In-Person Intensive (Singapore)",
-    price: 600,
+    price: 400,
+    priceFrom: true,
+    bookingMode: "contact",
     duration: "Full day",
     format: "in-person",
     tagline: "One day, in studio, in Singapore.",

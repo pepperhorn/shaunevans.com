@@ -91,6 +91,9 @@ type RawLesson = {
   description: string | null;
   includes: Array<{ item: string }> | null;
   popular: boolean | null;
+  price_from: boolean | null;
+  currency: string | null;
+  booking_mode: string | null;
 };
 
 import type { Lesson } from "@/data/lessons";
@@ -344,7 +347,7 @@ export async function fetchLessons(): Promise<Lesson[]> {
   const items = await directusFetch<RawLesson[]>("/items/lessons", {
     "filter[status][_eq]": "published",
     "fields[]":
-      "id,name,slug,price,duration,format,tagline,description,includes,popular",
+      "id,name,slug,price,duration,format,tagline,description,includes,popular,price_from,currency,booking_mode",
     sort: "sort,id",
     limit: "50",
   });
@@ -359,6 +362,9 @@ export async function fetchLessons(): Promise<Lesson[]> {
     description: l.description ?? "",
     includes: (l.includes ?? []).map((x) => x.item),
     popular: l.popular ?? false,
+    priceFrom: l.price_from ?? false,
+    currency: l.currency || null,
+    bookingMode: l.booking_mode === "contact" ? "contact" : "book",
   }));
 }
 
@@ -372,6 +378,8 @@ export type CmsPost = {
   content: string;
   image: string | null;
   imageUrl: string | null;
+  /** Looping homepage background clip (WebM/MP4), from `posts.hero_video`. */
+  heroVideo: { url: string; type: string } | null;
   authorName: string;
   publishedAt: string;
   tags: { name: string; slug: string }[];
@@ -384,6 +392,7 @@ type RawPost = {
   description: string | null;
   content: string | null;
   image: string | null;
+  hero_video: { id: string; type: string | null } | null;
   published_at: string | null;
   date_created: string | null;
   author: { first_name?: string; last_name?: string; email?: string } | string | null;
@@ -408,6 +417,10 @@ function mapPost(p: RawPost): CmsPost {
     content: p.content ?? "",
     image: p.image,
     imageUrl: p.image && BASE_URL ? `${BASE_URL}/assets/${p.image}` : null,
+    heroVideo:
+      p.hero_video?.id && BASE_URL && p.hero_video.type?.startsWith("video/")
+        ? { url: `${BASE_URL}/assets/${p.hero_video.id}`, type: p.hero_video.type }
+        : null,
     authorName: authorName || "Shaun Evans",
     publishedAt: p.published_at ?? p.date_created ?? new Date().toISOString(),
     tags,
@@ -421,6 +434,8 @@ const POST_FIELDS = [
   "description",
   "content",
   "image",
+  "hero_video.id",
+  "hero_video.type",
   "published_at",
   "date_created",
   "author.first_name",

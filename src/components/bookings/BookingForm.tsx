@@ -141,7 +141,9 @@ export default function BookingForm({ lessons }: Props) {
                 <option value="" disabled>
                   Select a package
                 </option>
-                {lessons.map((lesson) => (
+                {lessons
+                  .filter((lesson) => lesson.bookingMode !== "contact")
+                  .map((lesson) => (
                   <option key={lesson.slug} value={lesson.slug}>
                     {lesson.name} — ${lesson.price}
                   </option>
