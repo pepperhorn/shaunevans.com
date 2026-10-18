@@ -1,0 +1,192 @@
+# Lesson booking — se-cms schema record
+
+Record of the Directus schema changes made on **se-cms** (`https://content.shaunevans.com`, Directus 12.5 / Postgres 16.4) for the lesson booking calendar (Task 5, 2026-10-19). All changes are additive: no fields dropped or renamed, no rows deleted.
+
+A pre-change snapshot (`directus_collections` / `directus_fields` / `directus_relations` / `directus_permissions` rows + `information_schema.columns`, plus a `pg_dump --schema-only`) is kept outside git at `.superpowers/sdd/2026-10-18-lesson-booking-calendar/schema-before.{json,sql}`. It was taken from psql because no admin REST token was available for `GET /schema/snapshot`.
+
+Collections, fields and relations were created with the se-cms MCP tools (`collections`, `fields`, `relations`). The exclusion constraint was added with raw DDL over SSH.
+
+## New collections
+
+All three use a `uuid` primary key `id` and hidden `date_created` / `date_updated` (`timestamp`) system fields.
+
+### `availability`
+
+Shaun's teaching blocks. Display template: `{{entry_type}} {{recurrence}} {{start_time}}–{{end_time}}`.
+
+| field | Directus type | Postgres | notes |
+|---|---|---|---|
+| `status` | string | varchar NOT NULL default `published` | `published` \| `draft` |
+| `entry_type` | string | varchar NOT NULL default `available` | `available` \| `unavailable` |
+| `recurrence` | string | varchar NOT NULL default `weekly` | `none` \| `weekly` \| `fortnightly` |
+| `day_of_week` | integer | integer NULL | ISO 1=Mon..7=Sun; validation 1–7 or null |
+| `start_date` | date | date NOT NULL | Sydney date |
+| `end_date` | date | date NULL | empty = open-ended / single day |
+| `start_time` | time | time NOT NULL | Sydney wall-clock |
+| `end_time` | time | time NOT NULL | Sydney wall-clock; end ≤ start = next day |
+| `note` | text | text NULL | private |
+
+Directus returns `time` values as `HH:MM:SS`, and `AvailabilityRow` expects `HH:MM`. The Task 6 reader must normalise the format or tolerate seconds.
+
+### `bookings`
+
+Display template: `{{when_label}} — {{user.email}} ({{status}})`.
+
+| field | Directus type | Postgres | notes |
+|---|---|---|---|
+| `status` | string | varchar NOT NULL default `held` | `held` \| `confirmed` \| `cancelled` \| `completed` \| `no_show` |
+| `user` | integer, M2O → `users` | integer NULL (meta required) | FK `bookings_user_foreign` ON DELETE SET NULL |
+| `lesson` | integer, M2O → `lessons` | integer NULL (meta required) | FK ON DELETE SET NULL |
+| `start_at` | timestamp | timestamptz NOT NULL | UTC instant |
+| `end_at` | timestamp | timestamptz NOT NULL | UTC instant |
+| `busy_start` | timestamp | timestamptz NOT NULL | start_at − padding before |
+| `busy_end` | timestamp | timestamptz NOT NULL | end_at + padding after |
+| `hold_expires_at` | timestamp | timestamptz NULL | |
+| `source` | string | varchar NOT NULL default `purchase` | `purchase` \| `credit` |
+| `order` | uuid, M2O → `orders` | uuid NULL | FK ON DELETE SET NULL |
+| `order_item` | uuid, M2O → `order_items` | uuid NULL | FK ON DELETE SET NULL |
+| `credit` | uuid, M2O → `lesson_credits` | uuid NULL | FK ON DELETE SET NULL |
+| `meet_link` | string | varchar NULL | |
+| `student_notes` | text | text NULL | |
+| `visitor_timezone` | string | varchar NULL | IANA zone |
+| `when_label` | string | varchar NULL | UI read-only (API writable) |
+| `cancelled_at` | timestamp | timestamptz NULL | |
+| `cancel_reason` | string | varchar NULL | |
+| `reminder_email_sent_at` | timestamp | timestamptz NULL | UI read-only |
+| `reminder_sms_sent_at` | timestamp | timestamptz NULL | UI read-only |
+
+### `lesson_credits`
+
+Display template: `{{credits_total}} × {{lesson.name}} — {{user.email}} ({{status}})`.
+
+| field | Directus type | Postgres | notes |
+|---|---|---|---|
+| `status` | string | varchar NOT NULL default `active` | `active` \| `expired` \| `void` |
+| `user` | integer, M2O → `users` | integer NULL (meta required) | FK ON DELETE SET NULL |
+| `pack` | integer, M2O → `lessons` | integer NULL | the pack bought; null for refund credits |
+| `lesson` | integer, M2O → `lessons` | integer NULL (meta required) | lesson type the credit books |
+| `order_item` | uuid, M2O → `order_items` | uuid NULL | FK ON DELETE SET NULL |
+| `credits_total` | integer | integer NOT NULL default 1 | |
+| `expires_at` | timestamp | timestamptz NULL | |
+
+## Fields added to existing collections
+
+| collection | field | type | default | notes |
+|---|---|---|---|---|
+| `lessons` | `kind` | string | null | `single` \| `pack` \| `contact` |
+| `lessons` | `duration_minutes` | integer | null | |
+| `lessons` | `credits` | integer | null | |
+| `lessons` | `credit_lesson` | integer, M2O → `lessons` | null | FK `lessons_credit_lesson_foreign` ON DELETE SET NULL |
+| `lessons` | `credit_expiry_months` | integer | 12 | |
+| `lessons` | `requires_phone` | boolean (NOT NULL) | false | |
+| `globals` | `booking_min_notice_hours` | integer | 24 | |
+| `globals` | `booking_horizon_weeks` | integer | 8 | |
+| `globals` | `booking_padding_before_mins` | integer | 0 | |
+| `globals` | `booking_padding_after_mins` | integer | 0 | |
+| `globals` | `booking_hold_minutes` | integer | 15 | |
+| `globals` | `booking_slot_step_mins` | integer | 30 | |
+| `globals` | `booking_cancel_cutoff_hours` | integer | 24 | |
+| `globals` | `booking_notify_email` | string | `shaun@shaunevans.com` | |
+| `order_items` | `lesson` | integer, M2O → `lessons` | null | FK ON DELETE SET NULL |
+| `order_items` | `booking` | uuid, M2O → `bookings` | null | FK ON DELETE SET NULL |
+| `orders` | `needs_attention` | boolean (NOT NULL) | false | |
+| `users` | `sms_opt_in` | boolean (NOT NULL) | false | |
+
+`order_items.product` was already nullable (`is_nullable YES`, `required false`), so it needed no change. `orders.currency` already offers `AUD` (Task 2). `users.phone` already exists.
+
+`globals` is a singleton (row `id = 1`), and the eight values above are set on that row.
+
+## Relations (all M2O, `on_delete SET NULL`, no O2M alias)
+
+`bookings.user→users`, `bookings.lesson→lessons`, `bookings.order→orders`, `bookings.order_item→order_items`, `bookings.credit→lesson_credits`, `lesson_credits.user→users`, `lesson_credits.pack→lessons`, `lesson_credits.lesson→lessons`, `lesson_credits.order_item→order_items`, `lessons.credit_lesson→lessons`, `order_items.lesson→lessons`, `order_items.booking→bookings` (directus_relations ids 109–120).
+
+## Double-booking guard (DDL)
+
+Run via `ssh -i ~/.ssh/coolify_hz_localhost_key root@coolify-hz` → `docker exec -i postgresql-wxinv1oyzrgdrwgupv4tlw2d psql -U $POSTGRES_USER -d directus`:
+
+```sql
+ALTER TABLE bookings ADD CONSTRAINT bookings_no_overlap
+  EXCLUDE USING gist (tstzrange(busy_start, busy_end, '[)') WITH &&)
+  WHERE (status IN ('held','confirmed'));
+```
+
+No extension was needed: `btree_gist` was **not** installed. Range types have native GiST support. The resulting definition is:
+
+```
+EXCLUDE USING gist (tstzrange(busy_start, busy_end, '[)'::text) WITH &&) WHERE (((status)::text = ANY ((ARRAY['held'::character varying, 'confirmed'::character varying])::text[])))
+```
+
+Rollback, if ever needed: `ALTER TABLE bookings DROP CONSTRAINT bookings_no_overlap;`
+
+The constraint does not know about `hold_expires_at`. An expired hold still blocks its time until something flips it to `cancelled`. App code must cancel expired holds (scheduled flow and/or before insert) so they stop blocking.
+
+### Verification (single transaction, rolled back; 0 rows remain)
+
+```
+BEGIN;
+INSERT confirmed 08:00–09:00                          → INSERT 0 1
+INSERT confirmed 08:30–09:30 (overlap)                → ERROR: 23P01: conflicting key value violates exclusion constraint "bookings_no_overlap"
+INSERT held      08:30–09:30 (overlap)                → ERROR: 23P01 (same constraint)
+INSERT confirmed 09:00–10:00 (back-to-back, '[)')     → INSERT 0 1
+INSERT cancelled 08:15–09:15 (overlap, not guarded)   → INSERT 0 1
+ROLLBACK;
+SELECT count(*) FROM bookings;                        → 0
+```
+
+(Savepoints were used between the failing inserts. All rows were on 2030-01-01 UTC.)
+
+## Seed
+
+Existing `lessons` rows were mapped by slug, not assumed ids. Only the new fields were written; names, prices and descriptions are unchanged.
+
+| id | slug | name | kind | duration_minutes | credits | credit_lesson | credit_expiry_months | requires_phone |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `single-session` | Single Coaching Session | single | 60 | – | – | 12 (default) | false |
+| 2 | `four-pack` | Four-Pack | pack | – | 4 | 1 | 12 | false |
+| 3 | `composition-mentorship` | Composition Mentorship | pack | – | 6 | 1 | 12 | true |
+| 4 | `in-person-intensive` | In-Person Intensive (Singapore) | contact | – | – | – | 12 (default) | false |
+
+The Composition Mentorship display copy still says `duration` "6 × 75 min" and "Six 75-minute mentorship sessions", but its credits book the 60-minute Single type, as the spec says. Shaun should reconcile the copy or the lesson type.
+
+`globals` (row 1): `booking_min_notice_hours` 24, `booking_horizon_weeks` 8, `booking_padding_before_mins` 0, `booking_padding_after_mins` 0, `booking_hold_minutes` 15, `booking_slot_step_mins` 30, `booking_cancel_cutoff_hours` 24, `booking_notify_email` `shaun@shaunevans.com`.
+
+## Permissions — `DIRECTUS_TOKEN` policy "Production" (`9f9decc2-0b4b-4020-bbc0-fe2396362ca5`)
+
+Existing grants already use `fields: *` with no item filter, so they cover the new fields with no change:
+
+| collection | action | id | covers |
+|---|---|---|---|
+| `lessons` | read | 94 | new lesson fields |
+| `order_items` | create / read / update | 55 / 56 / 100 | `lesson`, `booking` |
+| `orders` | create / read / update | 57 / 58 / 59 | `needs_attention`, `notes` |
+| `users` | create / read / update | 110 / 111 / 112 | `phone`, `sms_opt_in` |
+
+**Still to add (PENDING — no admin credential was available to this task):**
+
+| collection | action | fields | permissions / validation / presets |
+|---|---|---|---|
+| `availability` | read | `*` | none |
+| `bookings` | create | `*` | none |
+| `bookings` | read | `*` | none |
+| `bookings` | update | `*` | none |
+| `lesson_credits` | create | `*` | none |
+| `lesson_credits` | read | `*` | none |
+| `lesson_credits` | update | `*` | none |
+| `globals` | read | `id,booking_min_notice_hours,booking_horizon_weeks,booking_padding_before_mins,booking_padding_after_mins,booking_hold_minutes,booking_slot_step_mins,booking_cancel_cutoff_hours,booking_notify_email` | none |
+
+`globals` has no read grant at all today. The field list above deliberately leaves out `openai_api_key`.
+
+Add these in Studio (Settings → Access Policies → Production) or `POST /permissions` with an admin token, using `policy: "9f9decc2-0b4b-4020-bbc0-fe2396362ca5"`.
+
+### Verification (`curl -H "Authorization: Bearer $DIRECTUS_TOKEN"`, 2026-10-19)
+
+| request | status |
+|---|---|
+| `GET /items/lessons?fields=id,kind,duration_minutes,credits,credit_lesson,credit_expiry_months,requires_phone` | 200 (seeded values returned) |
+| `GET /items/orders?fields=id,needs_attention,notes&limit=1` | 200 |
+| `GET /items/order_items?fields=id,lesson,booking,product&limit=1` | 200 |
+| `GET /items/users?fields=id,phone,sms_opt_in&limit=1` | 200 |
+| `GET /items/globals?fields=booking_min_notice_hours,booking_notify_email` | **403** (pending grant) |
+| `GET /items/availability?limit=1` | **403** (pending grant) |
+| `GET /items/bookings?limit=1` | **403** (pending grant) |
+| `GET /items/lesson_credits?limit=1` | **403** (pending grant) |
