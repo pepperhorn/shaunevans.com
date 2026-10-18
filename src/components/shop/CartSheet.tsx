@@ -26,10 +26,10 @@ function formatPrice(value: number) {
 
 function CartLine({ item }: { item: CartItem }) {
   return (
-    <li className="flex gap-3 py-4">
+    <li className="cart-sheet-item flex gap-3 py-4">
       <a
         href={`/shop/${item.slug}/`}
-        className="block h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted"
+        className="cart-sheet-item-thumb block h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted"
       >
         <img
           src={item.image}
@@ -38,18 +38,18 @@ function CartLine({ item }: { item: CartItem }) {
           loading="lazy"
         />
       </a>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
+      <div className="cart-sheet-item-body flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-start justify-between gap-2">
           <a
             href={`/shop/${item.slug}/`}
-            className="line-clamp-2 text-sm font-medium hover:underline"
+            className="cart-sheet-item-name line-clamp-2 min-w-0 break-words text-sm font-medium hover:underline"
           >
             {item.name}
           </a>
           <button
             type="button"
             onClick={() => removeFromCart(item.id)}
-            className="shrink-0 text-muted-foreground hover:text-foreground"
+            className="cart-sheet-item-remove -m-1.5 flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
             aria-label={`Remove ${item.name}`}
           >
             <Trash2 className="h-4 w-4" />
@@ -99,8 +99,11 @@ export default function CartSheet() {
       open={open === "open"}
       onOpenChange={(next) => cartOpen.set(next ? "open" : "closed")}
     >
-      <SheetContent side="right" className="flex w-full flex-col sm:max-w-md">
-        <SheetHeader>
+      <SheetContent
+        side="right"
+        className="cart-sheet flex w-full flex-col gap-0 p-0 sm:max-w-md"
+      >
+        <SheetHeader className="cart-sheet-header p-6 pb-4 pr-14 text-left">
           <SheetTitle>Your cart</SheetTitle>
           <SheetDescription>
             {items.length === 0
@@ -110,7 +113,7 @@ export default function CartSheet() {
         </SheetHeader>
 
         {items.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-12 text-center">
+          <div className="cart-sheet-empty flex flex-1 flex-col items-center justify-center gap-4 px-6 py-12 text-center">
             <p className="text-sm text-muted-foreground">
               Your cart is empty. Find something in the shop.
             </p>
@@ -119,7 +122,7 @@ export default function CartSheet() {
             </Button>
           </div>
         ) : (
-          <ul className="flex-1 divide-y overflow-y-auto px-6">
+          <ul className="cart-sheet-items min-h-0 flex-1 divide-y overflow-y-auto border-t px-6">
             {items.map((item) => (
               <CartLine key={item.id} item={item} />
             ))}
@@ -127,7 +130,7 @@ export default function CartSheet() {
         )}
 
         {items.length > 0 && (
-          <SheetFooter className="border-t">
+          <SheetFooter className="cart-sheet-footer flex-col gap-3 border-t p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:flex-col sm:justify-start sm:space-x-0">
             <div className="cart-total flex w-full items-center justify-between text-sm">
               <span className="text-muted-foreground">Total (incl. GST)</span>
               <span className="text-base font-semibold tabular-nums">
@@ -135,7 +138,7 @@ export default function CartSheet() {
               </span>
             </div>
             <Separator />
-            <p className="text-xs text-muted-foreground">
+            <p className="cart-sheet-note text-xs text-muted-foreground">
               Prices include 10% GST. Digital goods — delivered by email after
               payment.
             </p>

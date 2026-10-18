@@ -50,7 +50,12 @@ export default function ShopSidebar({ series = [] }: { series?: Series[] }) {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild size="lg" tooltip="Shop">
+            <SidebarMenuButton
+              asChild
+              size="lg"
+              tooltip="Shop"
+              className="shop-sidebar-home group-data-[collapsible=icon]:!p-2"
+            >
               <a href="/shop/">
                 <Store />
                 <span className="font-overpass-mono text-base">Shop</span>
@@ -94,11 +99,14 @@ export default function ShopSidebar({ series = [] }: { series?: Series[] }) {
                   <SidebarMenuSub>
                     {series.map((s) => (
                       <SidebarMenuSubItem key={s.id}>
-                        <SidebarMenuSubButton href={`/learn/series/${s.slug}/`}>
+                        <SidebarMenuSubButton
+                          href={`/learn/series/${s.slug}/`}
+                          className="shop-sidebar-series-link"
+                        >
                           <PlayCircle />
-                          <span>{s.title}</span>
+                          <span className="shop-sidebar-series-title min-w-0 truncate">{s.title}</span>
                           {s.access_tier === "paid" && (
-                            <Lock className="ml-auto !size-3 text-muted-foreground" />
+                            <Lock className="shop-sidebar-series-lock ml-auto !size-3 shrink-0 text-muted-foreground" />
                           )}
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>

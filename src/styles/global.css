@@ -143,3 +143,22 @@ h1 {
   max-width: 560px;
   height: 315px;
 }
+
+/*
+  Radix Dialog/Sheet scroll lock (react-remove-scroll-bar) injects an
+  unlayered `body[data-scroll-locked] { padding-left/top/right: 0; margin-*: 0 }`
+  rule. Unlayered CSS beats Tailwind's layered utilities, so while any Sheet is
+  open the body loses its p-8 / md:px-16 gutters: the page jumps under the
+  overlay and the Header's -mx-8 bleed overflows by 32px, which on mobile
+  widens the layout viewport (390 -> 422px) and pushes the Sheet's close
+  button off-screen. Revert those props back to the Tailwind layer values.
+  Higher specificity (html body[...]) so this wins over the injected rule.
+  margin-right stays as injected (it carries the scrollbar-gap compensation).
+*/
+html body[data-scroll-locked] {
+  padding-left: revert-layer;
+  padding-top: revert-layer;
+  padding-right: revert-layer;
+  margin-left: revert-layer;
+  margin-top: revert-layer;
+}
