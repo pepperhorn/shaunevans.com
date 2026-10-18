@@ -1,0 +1,421 @@
+/**
+ * Server-only Directus data layer for the lesson booking calendar
+ * (availability, bookings, lesson_credits, globals booking settings).
+ * Uses DIRECTUS_TOKEN; never import from client code.
+ */
+import type { AvailabilityRow, Interval } from "./availability";
+import { buildAvailabilityView, DEFAULT_SETTINGS, padInterval, type BookingSettings } from "./slots";
+import { whenLabel } from "./policy";
+import { addDaysIso, zonedParts, BOOKING_TZ } from "./time";
+
+export type BookingStatus = "held" | "confirmed" | "cancelled" | "completed" | "no_show";
+
+const MIN_MS = 60_000;
+
+// ── Directus REST ───────────────────────────────────────────────────────────
+
+/** Runtime env first (built server), then Vite's build-time env (dev/tests). */
+function env(key: string): string | undefined {
+  return process.env[key] ?? (import.meta.env as Record<string, string | undefined>)[key];
+}
+
+function base(): string {
+  const url = env("DIRECTUS_URL");
+  if (!url) throw new Error("DIRECTUS_URL not set");
+  return url.replace(/\/$/, "");
+}
+
+function token(): string {
+  const t = env("DIRECTUS_TOKEN");
+  if (!t) throw new Error("DIRECTUS_TOKEN not set");
+  return t;
+}
+
+export class DirectusError extends Error {
+  status: number;
+  body: string;
+  constructor(method: string, path: string, status: number, body: string) {
+    super(`Directus ${method} ${path} failed: ${status} ${body}`);
+    this.name = "DirectusError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+async function request<T>(
+  method: "GET" | "POST" | "PATCH",
+  path: string,
+  opts: { params?: Record<string, string>; body?: unknown } = {},
+): Promise<T> {
+  const url = new URL(`${base()}${path}`);
+  for (const [k, v] of Object.entries(opts.params ?? {})) url.searchParams.set(k, v);
+  const res = await fetch(url.toString(), {
+    method,
+    headers: {
+      Authorization: `Bearer ${token()}`,
+      ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+  });
+  if (!res.ok) throw new DirectusError(method, path, res.status, await res.text());
+  if (res.status === 204) return undefined as T;
+  const json = (await res.json()) as { data: T };
+  return json.data;
+}
+
+const iso = (ms: number) => new Date(ms).toISOString();
+
+// ── Settings ────────────────────────────────────────────────────────────────
+
+type RawGlobals = Partial<{
+  booking_min_notice_hours: number | null;
+  booking_horizon_weeks: number | null;
+  booking_padding_before_mins: number | null;
+  booking_padding_after_mins: number | null;
+  booking_hold_minutes: number | null;
+  booking_slot_step_mins: number | null;
+  booking_cancel_cutoff_hours: number | null;
+  booking_notify_email: string | null;
+}>;
+
+/** `globals` booking_* fields → BookingSettings; any missing value (or a failed read) uses DEFAULT_SETTINGS. */
+export async function getBookingSettings(): Promise<BookingSettings> {
+  let g: RawGlobals;
+  try {
+    g = (await request<RawGlobals>("GET", "/items/globals")) ?? {};
+  } catch (err) {
+    console.warn("[booking] globals read failed, using defaults:", (err as Error).message);
+    return { ...DEFAULT_SETTINGS };
+  }
+  const d = DEFAULT_SETTINGS;
+  return {
+    minNoticeHours: g.booking_min_notice_hours ?? d.minNoticeHours,
+    horizonWeeks: g.booking_horizon_weeks ?? d.horizonWeeks,
+    paddingBeforeMins: g.booking_padding_before_mins ?? d.paddingBeforeMins,
+    paddingAfterMins: g.booking_padding_after_mins ?? d.paddingAfterMins,
+    holdMinutes: g.booking_hold_minutes ?? d.holdMinutes,
+    slotStepMins: g.booking_slot_step_mins ?? d.slotStepMins,
+    cancelCutoffHours: g.booking_cancel_cutoff_hours ?? d.cancelCutoffHours,
+    notifyEmail: g.booking_notify_email || d.notifyEmail,
+  };
+}
+
+// ── Lessons ─────────────────────────────────────────────────────────────────
+
+export type BookableLesson = {
+  id: number;
+  slug: string;
+  name: string;
+  kind: "single" | "pack" | "contact" | null;
+  durationMinutes: number | null;
+  price: number;
+};
+
+type RawLesson = {
+  id: number;
+  slug: string;
+  name: string;
+  kind: BookableLesson["kind"];
+  duration_minutes: number | null;
+  price: number | string | null;
+};
+
+const LESSON_FIELDS = "id,slug,name,kind,duration_minutes,price";
+
+function toLesson(l: RawLesson): BookableLesson {
+  return {
+    id: l.id,
+    slug: l.slug,
+    name: l.name,
+    kind: l.kind,
+    durationMinutes: l.duration_minutes,
+    price: Number(l.price ?? 0),
+  };
+}
+
+/** Published lesson by slug, or null. */
+export async function getLessonBySlug(slug: string): Promise<BookableLesson | null> {
+  const rows = await request<RawLesson[]>("GET", "/items/lessons", {
+    params: {
+      filter: JSON.stringify({ slug: { _eq: slug }, status: { _eq: "published" } }),
+      fields: LESSON_FIELDS,
+      limit: "1",
+    },
+  });
+  return rows[0] ? toLesson(rows[0]) : null;
+}
+
+export async function getLessonById(id: number): Promise<BookableLesson | null> {
+  const rows = await request<RawLesson[]>("GET", "/items/lessons", {
+    params: { filter: JSON.stringify({ id: { _eq: id } }), fields: LESSON_FIELDS, limit: "1" },
+  });
+  return rows[0] ? toLesson(rows[0]) : null;
+}
+
+// ── Availability + busy ─────────────────────────────────────────────────────
+
+const hhmm = (t: string) => t.slice(0, 5); // Directus `time` → "HH:MM:SS"
+
+/** Published availability rows, times normalised to "HH:MM". Notes are never fetched. */
+export async function listAvailabilityRows(): Promise<AvailabilityRow[]> {
+  const rows = await request<AvailabilityRow[]>("GET", "/items/availability", {
+    params: {
+      filter: JSON.stringify({ status: { _eq: "published" } }),
+      fields: "id,entry_type,recurrence,day_of_week,start_date,end_date,start_time,end_time",
+      limit: "-1",
+    },
+  });
+  return rows.map((r) => ({ ...r, start_time: hhmm(r.start_time), end_time: hhmm(r.end_time) }));
+}
+
+type RawBusy = { status: BookingStatus; busy_start: string; busy_end: string; hold_expires_at: string | null };
+
+/** Padded busy ranges overlapping [from, to): confirmed bookings + unexpired holds. */
+export async function listBusy(from: number, to: number): Promise<Interval[]> {
+  const now = Date.now();
+  const rows = await request<RawBusy[]>("GET", "/items/bookings", {
+    params: {
+      filter: JSON.stringify({
+        _and: [
+          { busy_start: { _lt: iso(to) } },
+          { busy_end: { _gt: iso(from) } },
+          {
+            _or: [
+              { status: { _eq: "confirmed" } },
+              { _and: [{ status: { _eq: "held" } }, { hold_expires_at: { _gt: iso(now) } }] },
+            ],
+          },
+        ],
+      }),
+      fields: "status,busy_start,busy_end,hold_expires_at",
+      sort: "busy_start",
+      limit: "-1",
+    },
+  });
+  // Re-check locally too: the instant may have moved on since Directus evaluated it.
+  return rows
+    .filter((r) => r.status === "confirmed" || (r.status === "held" && !!r.hold_expires_at && Date.parse(r.hold_expires_at) > now))
+    .map((r) => ({ start: Date.parse(r.busy_start), end: Date.parse(r.busy_end) }));
+}
+
+/**
+ * Cancel holds whose expiry has passed. The overlap constraint ignores
+ * hold_expires_at, so this must run before every insert.
+ */
+export async function expireStaleHolds(): Promise<void> {
+  const now = iso(Date.now());
+  await request("PATCH", "/items/bookings", {
+    body: {
+      query: {
+        filter: { _and: [{ status: { _eq: "held" } }, { hold_expires_at: { _lt: now } }] },
+        limit: -1,
+      },
+      data: { status: "cancelled", cancelled_at: now, cancel_reason: "hold_expired" },
+    },
+  });
+}
+
+// ── Bookings ────────────────────────────────────────────────────────────────
+
+export type HoldResult =
+  | { ok: true; id: string; holdExpiresAt: string; whenLabel: string }
+  | { ok: false; reason: "conflict" | "not_bookable" };
+
+/**
+ * Matches the exclusion violation if Directus passes the DB text through (constraint name or SQLSTATE).
+ * se-cms (Directus 12.5) does NOT: it answers 500 INTERNAL_SERVER_ERROR "An unexpected error occurred.",
+ * so createBooking falls back to overlapsLiveBooking().
+ */
+export function isOverlapError(err: unknown): boolean {
+  if (!(err instanceof DirectusError)) return false;
+  return /bookings_no_overlap|23P01/.test(err.body);
+}
+
+/** Whether any held/confirmed booking's busy range overlaps `busy` (used when Directus hides the DB error). */
+async function overlapsLiveBooking(busy: Interval): Promise<boolean> {
+  const rows = await request<Array<{ id: string }>>("GET", "/items/bookings", {
+    params: {
+      filter: JSON.stringify({
+        _and: [
+          { status: { _in: ["held", "confirmed"] } },
+          { busy_start: { _lt: iso(busy.end) } },
+          { busy_end: { _gt: iso(busy.start) } },
+        ],
+      }),
+      fields: "id",
+      limit: "1",
+    },
+  });
+  return rows.length > 0;
+}
+
+export async function createBooking(input: {
+  userId: number;
+  lessonId: number;
+  startAt: number;
+  durationMins: number;
+  status: "held" | "confirmed";
+  source: "purchase" | "credit";
+  creditId?: string;
+  visitorTz: string;
+  settings: BookingSettings;
+  /** Internal (Task 8 re-occupy of a paid-but-expired hold): skip the grid check; only the DB constraint decides. */
+  skipAvailabilityCheck?: boolean;
+}): Promise<HoldResult> {
+  const { startAt, durationMins, settings } = input;
+  const now = Date.now();
+  await expireStaleHolds();
+
+  const endAt = startAt + durationMins * MIN_MS;
+  const busy = padInterval({ start: startAt, end: endAt }, settings);
+
+  if (!input.skipAvailabilityCheck) {
+    // Sydney day ±1 so overnight blocks (and busy spilling across midnight) are seen.
+    const day = zonedParts(startAt, BOOKING_TZ).date;
+    const fromDate = addDaysIso(day, -1);
+    const toDate = addDaysIso(day, 1);
+    const [rows, busyList] = await Promise.all([
+      listAvailabilityRows(),
+      listBusy(busy.start - 2 * 86_400_000, busy.end + 2 * 86_400_000),
+    ]);
+    const view = buildAvailabilityView({ rows, busy: busyList, fromDate, toDate, durationMins, settings, now });
+    if (!view.starts.includes(startAt)) return { ok: false, reason: "not_bookable" };
+  }
+
+  const holdExpiresAt = input.status === "held" ? iso(now + settings.holdMinutes * MIN_MS) : null;
+  const label = whenLabel(startAt, endAt, input.visitorTz);
+  try {
+    const created = await request<{ id: string }>("POST", "/items/bookings", {
+      params: { fields: "id" },
+      body: {
+        status: input.status,
+        user: input.userId,
+        lesson: input.lessonId,
+        start_at: iso(startAt),
+        end_at: iso(endAt),
+        busy_start: iso(busy.start),
+        busy_end: iso(busy.end),
+        hold_expires_at: holdExpiresAt,
+        source: input.source,
+        credit: input.creditId ?? null,
+        visitor_timezone: input.visitorTz,
+        when_label: label,
+      },
+    });
+    return { ok: true, id: created.id, holdExpiresAt: holdExpiresAt ?? "", whenLabel: label };
+  } catch (err) {
+    if (isOverlapError(err)) return { ok: false, reason: "conflict" };
+    // Directus may mask the 23P01 as a generic 500; confirm by looking for the overlapping row.
+    if (err instanceof DirectusError && err.status >= 500 && (await overlapsLiveBooking(busy).catch(() => false)))
+      return { ok: false, reason: "conflict" };
+    throw err;
+  }
+}
+
+export type BookingRecord = {
+  id: string;
+  status: BookingStatus;
+  userId: number | null;
+  lessonId: number | null;
+  startAt: string;
+  endAt: string;
+  holdExpiresAt: string | null;
+  source: "purchase" | "credit";
+  creditId: string | null;
+  whenLabel: string | null;
+};
+
+export async function getBooking(id: string): Promise<BookingRecord | null> {
+  const rows = await request<Array<Record<string, unknown>>>("GET", "/items/bookings", {
+    params: {
+      filter: JSON.stringify({ id: { _eq: id } }),
+      fields: "id,status,user,lesson,start_at,end_at,hold_expires_at,source,credit,when_label",
+      limit: "1",
+    },
+  });
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    id: r.id as string,
+    status: r.status as BookingStatus,
+    userId: (r.user as number | null) ?? null,
+    lessonId: (r.lesson as number | null) ?? null,
+    startAt: r.start_at as string,
+    endAt: r.end_at as string,
+    holdExpiresAt: (r.hold_expires_at as string | null) ?? null,
+    source: r.source as BookingRecord["source"],
+    creditId: (r.credit as string | null) ?? null,
+    whenLabel: (r.when_label as string | null) ?? null,
+  };
+}
+
+export async function updateBookingStatus(
+  id: string,
+  status: BookingStatus,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  await request("PATCH", `/items/bookings/${encodeURIComponent(id)}`, {
+    params: { fields: "id" },
+    body: { ...extra, status },
+  });
+}
+
+// ── Credits ─────────────────────────────────────────────────────────────────
+
+/** Booking statuses that consume a credit. */
+const CONSUMING: BookingStatus[] = ["held", "confirmed", "completed", "no_show"];
+
+type RawCredit = {
+  id: string;
+  credits_total: number;
+  expires_at: string | null;
+  lesson: { id: number; name: string } | null;
+  pack: { id: number; name: string } | null;
+};
+
+export type ActiveCredit = { id: string; packName: string; lessonId: number; remaining: number; expiresAt: string };
+
+/** Owner of a credit row (null when it doesn't exist) — lets routes tell "not yours" from "used up". */
+export async function getCreditOwner(creditId: string): Promise<number | null | undefined> {
+  const rows = await request<Array<{ user: number | null }>>("GET", "/items/lesson_credits", {
+    params: { filter: JSON.stringify({ id: { _eq: creditId } }), fields: "user", limit: "1" },
+  });
+  return rows[0] ? rows[0].user : undefined;
+}
+
+/** The user's usable credits: status active, not expired, with remaining > 0. */
+export async function getActiveCredits(userId: number): Promise<ActiveCredit[]> {
+  const now = Date.now();
+  const credits = await request<RawCredit[]>("GET", "/items/lesson_credits", {
+    params: {
+      filter: JSON.stringify({ user: { _eq: userId }, status: { _eq: "active" } }),
+      fields: "id,credits_total,expires_at,lesson.id,lesson.name,pack.id,pack.name",
+      sort: "expires_at",
+      limit: "-1",
+    },
+  });
+  const live = credits.filter((c) => c.lesson && (!c.expires_at || Date.parse(c.expires_at) > now));
+  if (live.length === 0) return [];
+
+  const used = await request<Array<{ credit: string; status: BookingStatus }>>("GET", "/items/bookings", {
+    params: {
+      filter: JSON.stringify({ credit: { _in: live.map((c) => c.id) }, status: { _in: CONSUMING } }),
+      fields: "credit,status",
+      limit: "-1",
+    },
+  });
+  const count = new Map<string, number>();
+  for (const b of used) {
+    if (CONSUMING.includes(b.status)) count.set(b.credit, (count.get(b.credit) ?? 0) + 1);
+  }
+
+  return live
+    .map((c) => ({
+      id: c.id,
+      packName: c.pack?.name ?? c.lesson!.name,
+      lessonId: c.lesson!.id,
+      remaining: c.credits_total - (count.get(c.id) ?? 0),
+      expiresAt: c.expires_at ?? "",
+    }))
+    .filter((c) => c.remaining > 0);
+}
