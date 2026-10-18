@@ -20,14 +20,14 @@ type Props = {
 type Step = "email" | "code";
 
 // The directus-otp-auth extension issues OTP_AUTH_CODE_DIGITS-length codes
-// (library default 8, allowed range 6–10). PUBLIC_OTP_AUTH_CODE_DIGITS only
+// (se-cms runs 6; library allows 6–10). PUBLIC_OTP_AUTH_CODE_DIGITS only
 // drives the copy/placeholder; the input itself accepts any length in range
 // so a server-side change can't lock users out.
 const CODE_MIN = 6;
 const CODE_MAX = 10;
 const CODE_DIGITS = (() => {
-  const n = Number(import.meta.env.PUBLIC_OTP_AUTH_CODE_DIGITS ?? 8);
-  return Number.isInteger(n) && n >= CODE_MIN && n <= CODE_MAX ? n : 8;
+  const n = Number(import.meta.env.PUBLIC_OTP_AUTH_CODE_DIGITS ?? 6);
+  return Number.isInteger(n) && n >= CODE_MIN && n <= CODE_MAX ? n : 6;
 })();
 
 export default function AuthOverlay({ open, onOpenChange, onAuthenticated, initialEmail }: Props) {
@@ -105,8 +105,8 @@ export default function AuthOverlay({ open, onOpenChange, onAuthenticated, initi
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="auth-overlay flex w-full flex-col sm:max-w-md">
-        <SheetHeader>
+      <SheetContent side="right" className="auth-overlay flex w-full flex-col gap-0 p-0 sm:max-w-md">
+        <SheetHeader className="auth-overlay-header p-6 pb-4 pr-14 text-left">
           <SheetTitle>{step === "email" ? "Sign in to continue" : "Enter your code"}</SheetTitle>
           <SheetDescription>
             {step === "email"
@@ -116,7 +116,7 @@ export default function AuthOverlay({ open, onOpenChange, onAuthenticated, initi
         </SheetHeader>
 
         {step === "email" ? (
-          <form onSubmit={handleRequestCode} className="auth-form-email flex flex-1 flex-col gap-3 px-6">
+          <form onSubmit={handleRequestCode} className="auth-form-email flex flex-1 flex-col gap-3 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
             <label className="auth-field text-sm">
               <span className="auth-label mb-1 block text-muted-foreground">Email</span>
               <input
@@ -140,14 +140,14 @@ export default function AuthOverlay({ open, onOpenChange, onAuthenticated, initi
               />
             </label>
             {error && <p className="auth-error text-sm text-red-600">{error}</p>}
-            <SheetFooter>
+            <SheetFooter className="auth-footer pt-2 sm:flex-col sm:justify-start sm:space-x-0">
               <Button type="submit" disabled={busy} className="btn-auth-send w-full">
                 {busy ? "Sending…" : "Send me a code"}
               </Button>
             </SheetFooter>
           </form>
         ) : (
-          <form onSubmit={handleVerifyCode} className="auth-form-code flex flex-1 flex-col gap-3 px-6">
+          <form onSubmit={handleVerifyCode} className="auth-form-code flex flex-1 flex-col gap-3 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
             <label className="auth-field text-sm">
               <span className="auth-label mb-1 block text-muted-foreground">{CODE_DIGITS}-digit code</span>
               <input
@@ -166,7 +166,7 @@ export default function AuthOverlay({ open, onOpenChange, onAuthenticated, initi
               />
             </label>
             {error && <p className="auth-error text-sm text-red-600">{error}</p>}
-            <SheetFooter className="flex-col gap-2">
+            <SheetFooter className="auth-footer flex-col gap-2 pt-2 sm:flex-col sm:justify-start sm:space-x-0">
               <Button type="submit" disabled={busy || code.length < CODE_MIN || code.length > CODE_MAX} className="btn-auth-verify w-full">
                 {busy ? "Verifying…" : "Verify"}
               </Button>
