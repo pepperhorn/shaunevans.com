@@ -177,12 +177,12 @@ export async function getUserById(id: string | number): Promise<AppUser | null> 
   return ((await res.json()) as { data?: AppUser | null }).data ?? null;
 }
 
-export async function createUser(email: string, name?: string): Promise<AppUser | null> {
+/** Creates the row without a name; the caller is unverified at this point. */
+export async function createUser(email: string): Promise<AppUser | null> {
   const res = await directusUsers(`/items/users?fields=${USER_FIELDS}`, {
     method: "POST",
     body: JSON.stringify({
       email,
-      ...(name ? { name } : {}),
       status: "active",
       email_verified: false,
     }),
