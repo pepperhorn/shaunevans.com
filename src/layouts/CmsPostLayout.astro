@@ -1,0 +1,132 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+import "../styles/glightbox.css";
+import Prose from "../components/Prose.astro";
+import { Image } from "astro:assets";
+import type { CmsPost } from "@/lib/posts";
+
+interface Props {
+  post: CmsPost;
+  collection: string;
+}
+
+const { post, collection } = Astro.props;
+
+const pubDate = new Date(post.publishedAt);
+const publishedDate = pubDate.toLocaleDateString("en-US", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+
+const author = post.authorName.split(" ")[0]?.toLowerCase() ?? "shaun";
+---
+
+<BaseLayout
+  title={post.title}
+  image={post.imageUrl ?? ""}
+  alt={post.title}
+  description={post.description}
+  author={author}
+  pubDate={publishedDate}
+  updatedDate={publishedDate}
+  is404Page={false}
+>
+  <article class="cms-post" data-pagefind-body>
+    {
+      post.imageUrl && (
+        <div class="cms-hero relative w-full h-[40vh] sm:h-[55vh] mb-8 overflow-hidden rounded-lg">
+          <Image
+            src={post.imageUrl}
+            alt={post.title}
+            width={1920}
+            height={1080}
+            inferSize={false}
+            format="avif"
+            quality={70}
+            loading="eager"
+            class="absolute inset-0 w-full h-full object-cover"
+          />
+          <div class="cms-hero-overlay absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+          <div class="cms-hero-content absolute inset-x-0 bottom-0 p-6 sm:p-10 text-white">
+            <h1 class="font-overpass-mono text-3xl sm:text-5xl uppercase mb-3">{post.title}</h1>
+            <div class="flex flex-wrap gap-2 mb-2">
+              {post.tags.map((tag) => (
+                <a
+                  href={`/${collection}/tags/${tag.slug}`}
+                  class="cms-tag bg-slate-700/70 text-white px-2 py-1 rounded-sm text-sm font-overpass-mono no-underline"
+                >
+                  {tag.name}
+                </a>
+              ))}
+            </div>
+            <time class="cms-pub-date font-inconsolata text-sm opacity-80" datetime={pubDate.toISOString()}>
+              Published {publishedDate}
+            </time>
+          </div>
+        </div>
+      )
+    }
+    {
+      !post.imageUrl && (
+        <header class="cms-header mb-8">
+          <h1 class="font-overpass-mono text-3xl sm:text-5xl uppercase mb-3">{post.title}</h1>
+          <div class="flex flex-wrap gap-2 mb-2">
+            {post.tags.map((tag) => (
+              <a
+                href={`/${collection}/tags/${tag.slug}`}
+                class="cms-tag bg-slate-600 text-white px-2 py-1 rounded-sm text-sm font-overpass-mono no-underline"
+              >
+                {tag.name}
+              </a>
+            ))}
+          </div>
+          <time class="cms-pub-date font-inconsolata text-sm" datetime={pubDate.toISOString()}>
+            Published {publishedDate}
+          </time>
+        </header>
+      )
+    }
+    <Prose>
+      <div class="cms-body" set:html={post.content} />
+    </Prose>
+  </article>
+</BaseLayout>
+
+<style>
+  .cms-body :global(.gallery) {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+    margin: 1.5rem 0;
+  }
+  .cms-body :global(.gallery img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 0.5rem;
+  }
+  .cms-body :global(.video-embed) {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    margin: 1.5rem 0;
+  }
+  .cms-body :global(.video-embed iframe) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0.5rem;
+  }
+  .cms-body :global(figure) {
+    margin: 1.5rem 0;
+    text-align: center;
+  }
+  .cms-body :global(figure img) {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+  }
+</style>

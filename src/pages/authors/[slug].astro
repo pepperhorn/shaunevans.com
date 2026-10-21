@@ -1,0 +1,17 @@
+---
+import CmsPostLayout from "../../layouts/CmsPostLayout.astro";
+import { getPostsByTag, getPost } from "@/lib/posts";
+
+export async function getStaticPaths() {
+  const posts = await getPostsByTag("authors");
+  return posts.map((p) => ({ params: { slug: p.slug }, props: { slug: p.slug } }));
+}
+
+const { slug } = Astro.props as { slug: string };
+const post = await getPost(slug);
+if (!post) {
+  return Astro.redirect("/404");
+}
+---
+
+<CmsPostLayout post={post} collection="authors" />

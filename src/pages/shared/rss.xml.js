@@ -1,25 +1,34 @@
 import rss from "@astrojs/rss";
-import { getCollection } from "astro:content";
 import sanitizeHtml from "sanitize-html";
-import MarkdownIt from "markdown-it";
-const parser = new MarkdownIt();
+import { getPostsByTag } from "@/lib/posts";
+
+const CATEGORY = "shared";
+const URL_PREFIX = "shared";
 
 export async function GET(context) {
-  const muses = await getCollection("shared");
+  const posts = await getPostsByTag(CATEGORY);
   return rss({
     stylesheet: "/rss/rss.xsl",
     title: "ShaunEvans.com",
-    description: "Canadian-Australian Saxophonist, Arranger & Musical Director Shaun Evans",
+    description:
+      "Canadian-Australian Saxophonist, Arranger & Musical Director Shaun Evans",
     site: context.site,
-    items: muses.map((post) => ({
-      title: post.data.title,
-      pubDate: post.data.pubDate,
-      description: post.data.description,
-      link: `/shared/${post.id}/`,
-      content: sanitizeHtml(parser.render(post.body)),
-      ...post.data,
+    items: posts.map((post) => ({
+      title: post.title,
+      pubDate: new Date(post.publishedAt),
+      description: post.description,
+      link: `/${URL_PREFIX}/${post.slug}/`,
+      content: sanitizeHtml(post.content || "", {
+        allowedTags: sanitizeHtml.defaults.allowedTags.concat(["img", "iframe", "figure"]),
+        allowedAttributes: {
+          ...sanitizeHtml.defaults.allowedAttributes,
+          img: ["src", "alt", "width", "height"],
+          iframe: ["src", "width", "height", "frameborder", "allow", "allowfullscreen", "title"],
+          a: ["href", "target", "rel"],
+        },
+        allowedSchemesByTag: { iframe: ["https"] },
+      }),
     })),
     customData: `<language>en-us</language>`,
   });
 }
-

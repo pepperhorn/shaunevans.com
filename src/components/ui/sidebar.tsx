@@ -88,8 +88,14 @@ const SidebarProvider = React.forwardRef<
       [setOpenProp, open],
     );
 
+    // Mobile (<768px) uses an off-canvas Sheet driven by openMobile; desktop
+    // toggles the inline expanded/collapsed (icon strip) state.
     const toggleSidebar = React.useCallback(() => {
-      return isMobile ? setOpenMobile((o) => !o) : setOpen((o) => !o);
+      if (isMobile) {
+        setOpenMobile((o) => !o);
+      } else {
+        setOpen((o) => !o);
+      }
     }, [isMobile, setOpen, setOpenMobile]);
 
     React.useEffect(() => {
@@ -173,7 +179,7 @@ const Sidebar = React.forwardRef<
       return (
         <div
           className={cn(
-            "flex h-full w-[--sidebar-width] flex-col bg-sidebar text-sidebar-foreground",
+            "flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground",
             className,
           )}
           ref={ref}
@@ -190,17 +196,21 @@ const Sidebar = React.forwardRef<
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
-            className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+            className="sidebar-mobile-sheet w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground"
             style={
-              { "--sidebar-width": SIDEBAR_WIDTH_MOBILE } as React.CSSProperties
+              {
+                "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+              } as React.CSSProperties
             }
             side={side}
           >
             <SheetHeader className="sr-only">
               <SheetTitle>Sidebar</SheetTitle>
-              <SheetDescription>Displays the navigation sidebar.</SheetDescription>
+              <SheetDescription>Displays the mobile sidebar.</SheetDescription>
             </SheetHeader>
-            <div className="flex h-full w-full flex-col">{children}</div>
+            <div className="sidebar-mobile-inner flex h-full w-full flex-col pt-10">
+              {children}
+            </div>
           </SheetContent>
         </Sheet>
       );
@@ -209,31 +219,36 @@ const Sidebar = React.forwardRef<
     return (
       <div
         ref={ref}
-        className="group peer hidden text-sidebar-foreground md:block"
+        className="sidebar-desktop group peer hidden text-sidebar-foreground min-[768px]:block"
         data-state={state}
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
         data-side={side}
       >
+        {/* In-flow spacer: reserves the sidebar's width so content sits beside it. */}
         <div
           className={cn(
-            "relative h-svh w-[--sidebar-width] bg-transparent transition-[width] duration-200 ease-linear",
+            "sidebar-gap relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
             "group-data-[collapsible=offcanvas]:w-0",
             "group-data-[side=right]:rotate-180",
             variant === "floating" || variant === "inset"
-              ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
-              : "group-data-[collapsible=icon]:w-[--sidebar-width-icon]",
+              ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+1rem)]"
+              : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
           )}
         />
         <div
           className={cn(
-            "fixed inset-y-0 z-10 hidden h-svh w-[--sidebar-width] transition-[left,right,width] duration-200 ease-linear md:flex",
+            // top-[72px] = height of the sticky site Header (pt-8 + 30px nav +
+            // 10px bottom padding). bottom-28 stops the strip above the
+            // fixed bottom-left .logo-badge; z-20 keeps it above the fixed
+            // .site-footer (z-10) but below the header (z-30) and sheets (z-50).
+            "sidebar-panel fixed top-[72px] bottom-28 z-20 flex w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
             variant === "floating" || variant === "inset"
-              ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+2px)]"
-              : "group-data-[collapsible=icon]:w-[--sidebar-width-icon] group-data-[side=left]:border-r group-data-[side=right]:border-l",
+              ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+1rem+2px)]"
+              : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
             className,
           )}
           {...props}
@@ -540,7 +555,7 @@ const SidebarMenuSkeleton = React.forwardRef<
     >
       {showIcon && <Skeleton className="size-4 rounded-md" data-sidebar="menu-skeleton-icon" />}
       <Skeleton
-        className="h-4 max-w-[--skeleton-width] flex-1"
+        className="h-4 max-w-(--skeleton-width) flex-1"
         data-sidebar="menu-skeleton-text"
         style={{ "--skeleton-width": width } as React.CSSProperties}
       />

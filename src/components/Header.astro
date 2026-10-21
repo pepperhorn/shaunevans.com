@@ -7,19 +7,13 @@ import CartSheet from "./shop/CartSheet.tsx";
 const { is404Page = false } = Astro.props;
 ---
 
-<header class="mb-[20px] mt-[-10px]">
+<header class="sticky top-0 z-30 -mx-8 px-8 py-[10px] md:-mx-16 md:px-16 mb-[20px] -mt-8 md:-mt-8 pt-8 bg-[rgb(244,242,238)]/95 backdrop-blur supports-[backdrop-filter]:bg-[rgb(244,242,238)]/80 dark:bg-[rgb(34,33,37)]/95 dark:supports-[backdrop-filter]:bg-[rgb(34,33,37)]/80">
   <nav class="flex items-center justify-between w-full h-[30px]">
     {
       !is404Page && (
         <div class="flex items-center h-[30px]">
-          <a href="/" class="block">
-            <img
-              class="favicon dark:invert w-[30px] h-[30px]"
-              src="/logos/pathcircleinv.svg"
-              alt="Home"
-              width="30"
-              height="30"
-            />
+          <a href="/" class="header-logo block" aria-label="Home" transition:persist="header-logo">
+            <se-logo-loop class="header-logo-mark block w-[30px]" label="Shaun Evans — home"></se-logo-loop>
           </a>
         </div>
       )
@@ -32,7 +26,7 @@ const { is404Page = false } = Astro.props;
               <ThemeToggle />
             </div>
             <div class="flex items-center justify-center h-[30px] w-[30px]">
-              <CartIcon client:load />
+              <CartIcon client:only="react" />
             </div>
             <div class="flex items-center justify-center h-[30px] w-[30px]">
               <Hamburger />
@@ -50,5 +44,9 @@ const { is404Page = false } = Astro.props;
     )
   }
   <slot />
-  {!is404Page && <CartSheet client:load />}
+  {!is404Page && <CartSheet client:only="react" />}
 </header>
+
+<script>
+  import "@/scripts/se-logo-loop.js";
+</script>

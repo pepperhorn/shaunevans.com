@@ -1,8 +1,26 @@
 ---
-import TagLayout from "../../../layouts/TagLayout.astro";
-const pageTitle = "Stories Projects";
-const directory = "stories";
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { getCategoryTags } from "@/lib/posts";
+
+const CATEGORY = "stories";
+const URL_PREFIX = "stories";
+const tags = await getCategoryTags(CATEGORY);
 ---
 
-<TagLayout directory={directory} title={pageTitle} />
-
+<BaseLayout title="Stories Tag Index" is404Page={false}>
+  <div class="tag-index mx-auto max-w-4xl px-4 py-8">
+    <h1 class="font-overpass-mono text-3xl mb-6 uppercase">Tags</h1>
+    <div class="flex flex-wrap gap-3">
+      {
+        tags.map((tag) => (
+          <a
+            href={`/${URL_PREFIX}/tags/${tag.slug}/`}
+            class="tag-chip bg-slate-600 text-[rgb(245,245,245)] px-3 py-1 rounded-sm font-overpass-mono uppercase no-underline hover:opacity-80"
+          >
+            {tag.name}
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</BaseLayout>

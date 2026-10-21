@@ -15,8 +15,14 @@ import {
   fetchProducts,
   fetchLessons,
   fetchSeries,
+  fetchSeriesBySlug,
+  fetchLearning,
+  fetchLearningBySeries,
+  fetchLearningBySlug,
   fetchGlobals,
   type Globals,
+  type LearningItem,
+  type LearningDetail,
 } from "@/lib/directus";
 
 const STUB_GLOBALS: Globals = { homeCategoryItems: 4 };
@@ -84,6 +90,69 @@ export async function getSeries(): Promise<Series[]> {
   return _series;
 }
 
+export async function getSeriesBySlug(slug: string): Promise<Series | null> {
+  if (directusEnabled) {
+    try {
+      return await fetchSeriesBySlug(slug);
+    } catch (err) {
+      console.warn("[catalog] Directus series fetch failed:", err);
+    }
+  }
+  return (await getSeries()).find((s) => s.slug === slug) ?? null;
+}
+
+// Learning items — page-builder-driven lesson posts, optionally grouped
+// into a series. Built-time fetch + per-build cache. No stub fallback.
+let _learning: LearningItem[] | null = null;
+const _learningBySeries = new Map<string, LearningItem[]>();
+const _learningBySlug = new Map<string, LearningDetail | null>();
+
+export async function getLearning(): Promise<LearningItem[]> {
+  if (_learning) return _learning;
+  if (!directusEnabled) {
+    _learning = [];
+    return _learning;
+  }
+  try {
+    _learning = await fetchLearning();
+  } catch (err) {
+    console.warn("[catalog] Directus learning fetch failed:", err);
+    _learning = [];
+  }
+  return _learning;
+}
+
+export async function getLearningBySeries(seriesId: string): Promise<LearningItem[]> {
+  const cached = _learningBySeries.get(seriesId);
+  if (cached) return cached;
+  if (!directusEnabled) return [];
+  try {
+    const items = await fetchLearningBySeries(seriesId);
+    _learningBySeries.set(seriesId, items);
+    return items;
+  } catch (err) {
+    console.warn("[catalog] Directus learning-by-series fetch failed:", err);
+    return [];
+  }
+}
+
+export async function getLearningBySlug(slug: string): Promise<LearningDetail | null> {
+  if (_learningBySlug.has(slug)) return _learningBySlug.get(slug) ?? null;
+  if (!directusEnabled) {
+    _learningBySlug.set(slug, null);
+    return null;
+  }
+  try {
+    const item = await fetchLearningBySlug(slug);
+    _learningBySlug.set(slug, item);
+    return item;
+  } catch (err) {
+    console.warn("[catalog] Directus learning-by-slug fetch failed:", err);
+    _learningBySlug.set(slug, null);
+    return null;
+  }
+}
+
 export async function getGlobals(): Promise<Globals> {
   if (_globals) return _globals;
   if (directusEnabled) {
@@ -98,4 +167,4 @@ export async function getGlobals(): Promise<Globals> {
   return _globals;
 }
 
-export type { Product, Lesson, Series, Globals };
+export type { Product, Lesson, Series, Globals, LearningItem, LearningDetail };

@@ -1,39 +1,31 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { getCollection } from "astro:content";
-const allMuses = await getCollection("shared");
-const tags = [...new Set(allMuses.map((post) => post.data.tags).flat())];
-const pageTitle = "Tag Index";
+import { getAllPosts } from "@/lib/posts";
+
+const posts = await getAllPosts();
+const tagMap = new Map<string, { name: string; slug: string }>();
+for (const p of posts) {
+  for (const t of p.tags) {
+    if (!tagMap.has(t.slug)) tagMap.set(t.slug, t);
+  }
+}
+const tags = [...tagMap.values()].sort((a, b) => a.name.localeCompare(b.name));
 ---
 
-<BaseLayout pageTitle={pageTitle}>
-  <div class="tags">
-    {
-      tags.map((tag) => (
-        <p class="tag">
-          <a href={`/tags/${tag}`}>{tag}</a>
-        </p>
-      ))
-    }
+<BaseLayout title="Tag Index" is404Page={false}>
+  <div class="tag-index mx-auto max-w-4xl px-4 py-8">
+    <h1 class="font-overpass-mono text-3xl mb-6 uppercase">All Tags</h1>
+    <div class="flex flex-wrap gap-3">
+      {
+        tags.map((tag) => (
+          <a
+            href={`/tags/${tag.slug}/`}
+            class="tag-chip bg-slate-600 text-[rgb(245,245,245)] px-3 py-1 rounded-sm font-overpass-mono uppercase no-underline hover:opacity-80"
+          >
+            {tag.name}
+          </a>
+        ))
+      }
+    </div>
   </div>
 </BaseLayout>
-<style>
-  a {
-    color: #00539f;
-  }
-
-  .tags {
-    display: flex;
-    flex-wrap: wrap;
-  }
-
-  .tag {
-    margin: 0.25em;
-    border: dotted 1px #a1a1a1;
-    border-radius: 0.5em;
-    padding: 0.5em 1em;
-    font-size: 1.15em;
-    background-color: #f8fcfd;
-  }
-</style>
-

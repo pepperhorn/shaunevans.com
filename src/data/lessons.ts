@@ -9,12 +9,26 @@ export type Lesson = {
   description: string;
   includes: string[];
   popular?: boolean;
+  /** Render the price as a starting price ("from $400"). */
+  priceFrom?: boolean;
+  /** Optional currency label after the price, e.g. "SGD". */
+  currency?: string | null;
+  /** "contact" shows a Contact Shaun link instead of booking, and is left out of the booking form. */
+  bookingMode?: "book" | "contact";
+  /** single = pick a time; pack = buys credits; contact = enquiry only. */
+  kind?: "single" | "pack" | "contact";
+  /** Session length used to fit start times (singles only). */
+  durationMinutes?: number | null;
+  /** Credits a pack grants. */
+  credits?: number | null;
 };
 
 export const lessons: Lesson[] = [
   {
     id: "l_001",
     slug: "single-session",
+    kind: "single",
+    durationMinutes: 60,
     name: "Single Session",
     price: 90,
     duration: "60 min",
@@ -31,6 +45,8 @@ export const lessons: Lesson[] = [
   {
     id: "l_002",
     slug: "four-pack",
+    kind: "pack",
+    credits: 4,
     name: "Four-Pack",
     price: 320,
     duration: "4 × 60 min",
@@ -49,6 +65,8 @@ export const lessons: Lesson[] = [
   {
     id: "l_003",
     slug: "composition-mentorship",
+    kind: "pack",
+    credits: 6,
     name: "Composition Mentorship",
     price: 540,
     duration: "6 × 75 min",
@@ -66,8 +84,11 @@ export const lessons: Lesson[] = [
   {
     id: "l_004",
     slug: "in-person-intensive",
+    kind: "contact",
     name: "In-Person Intensive (Singapore)",
-    price: 600,
+    price: 400,
+    priceFrom: true,
+    bookingMode: "contact",
     duration: "Full day",
     format: "in-person",
     tagline: "One day, in studio, in Singapore.",
