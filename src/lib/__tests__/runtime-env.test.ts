@@ -54,11 +54,12 @@ describe("server secrets are read from process.env at call time", () => {
     expect(calls.map((c) => c.headers.Authorization)).toEqual(["Bearer tok-1", "Bearer tok-2"]);
   });
 
-  it("orders sends the current DIRECTUS_TOKEN", async () => {
+  it("orders sends the current DIRECTUS_TOKEN and encodes the order id", async () => {
     process.env.DIRECTUS_URL = "https://cms.test";
     process.env.DIRECTUS_TOKEN = "tok-orders";
-    await getOrderForUser("o-1", 7);
+    await getOrderForUser("../users/1", 7);
     expect(calls[0].headers.Authorization).toBe("Bearer tok-orders");
+    expect(new URL(calls[0].url).pathname).toBe("/items/orders/..%2Fusers%2F1");
   });
 });
 

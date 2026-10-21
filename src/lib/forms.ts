@@ -73,7 +73,7 @@ export async function fetchFormById(id: string): Promise<FormDefinition | null> 
   const baseUrl = serverEnv("DIRECTUS_URL");
   const token = serverEnv("DIRECTUS_TOKEN");
   if (!baseUrl || !token) throw new Error("DIRECTUS_URL or DIRECTUS_TOKEN not set");
-  const url = new URL(`${baseUrl}/items/forms/${id}`);
+  const url = new URL(`${baseUrl}/items/forms/${encodeURIComponent(id)}`);
   url.searchParams.set("fields[]", FORM_FIELDS);
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },

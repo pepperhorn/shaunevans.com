@@ -125,5 +125,7 @@ export default defineConfig({
 
   adapter: node({
     mode: "standalone",
+    // Whole-request cap (default is 1 GB). /api/forms/submit also caps each file at 10 MB.
+    bodySizeLimit: 25 * 1024 * 1024,
   }),
 });

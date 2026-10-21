@@ -272,7 +272,7 @@ export async function attachPaymentSession(
   provider: string,
   sessionId: string,
 ): Promise<void> {
-  await directusPatch(`/items/orders/${orderId}`, {
+  await directusPatch(`/items/orders/${encodeURIComponent(orderId)}`, {
     status: "awaiting_payment",
     payment_provider: provider,
     payment_session_id: sessionId,
@@ -332,7 +332,7 @@ export async function getOrderForUser(
 ): Promise<OrderWithItems | null> {
   try {
     const order = await directusGet<OrderWithItems>(
-      `/items/orders/${orderId}`,
+      `/items/orders/${encodeURIComponent(orderId)}`,
       {
         "fields[]":
           "id,status,user,email,currency,subtotal,tax,total,payment_provider,payment_session_id,payment_intent_id,paid_at,delivered_at,items.id,items.name,items.slug,items.quantity,items.unit_price,items.line_total",
