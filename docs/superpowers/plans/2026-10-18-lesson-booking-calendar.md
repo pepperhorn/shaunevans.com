@@ -6,7 +6,7 @@
 
 **Architecture:** Pure booking logic (time zones, availability expansion, slot fitting) lives in `src/lib/booking/*` with vitest unit tests. A thin Directus data layer (`src/lib/booking/repo.ts`) and SSR API routes under `src/pages/api/bookings/*` wrap it. Double booking is prevented by a Postgres exclusion constraint on `bookings`. Payment reuses `/api/checkout` + the Square webhook, extended with a post-payment `fulfillPaidOrder`. Notifications are Directus flows that template pre-formatted strings stored on the booking.
 
-**Tech Stack:** Astro 6 SSR (`@astrojs/node`), React 19, Tailwind 4 + shadcn, nanostores, dayjs (+ `utc`, `timezone` plugins, already a dependency), vitest (new dev dep), Directus 12.5 REST + flows on se-cms (Postgres 16), Square Checkout Links API, AWS SNS via `directus-extension-operation-sms-aws-sns`.
+**Tech Stack:** Astro 6 SSR (`@astrojs/node`), React 19, Tailwind 4 + shadcn, nanostores, dayjs (+ `utc`, `timezone` plugins, already a dependency), vitest (new dev dep), Directus 12.5 REST + flows on se-cms (Postgres 16), Square Checkout Links API, AWS SNS via `directus-extension-operation-sms-aws-sns` with its ticketing bootstrap disabled (Task 12), later `directus-extension-messaging` for WhatsApp.
 
 **Spec:** `docs/superpowers/specs/2026-10-18-lesson-booking-calendar-design.md` — read it alongside this plan.
 
@@ -18,7 +18,7 @@
 - Credits expire `credit_expiry_months` after `paid_at` (default 12).
 - Currency is **AUD, GST-inclusive** everywhere; checkout default `AUD`; keep `createOrder`'s 1/11 GST back-calculation.
 - Late (< cutoff) changes: no self-service; copy: "Need to change this? Get in touch." + "Shaun reserves the right to charge for a no-show." linking `/contact`.
-- Reminders: email 24 h before; SMS 2 h before only if `users.sms_opt_in` and `users.phone`.
+- Reminders: email 24 h before, always. A phone reminder (SMS now, WhatsApp later) 2 h before goes only to a **verified** `users.phone_e164` (`phone_verified_at` set) with a ledger-backed opt-in. `users.phone` is never messaged. See Task 12.
 - Every new React/Astro element gets a contextual class name alongside Tailwind utilities (e.g. `booking-grid-cell ...`). Fonts: existing `font-overpass-mono` / `font-inconsolata`.
 - se-cms writes go through the `mcp__se-cms__*` tools or REST with an admin token; raw DDL via `ssh -i ~/.ssh/coolify_hz_localhost_key root@coolify-hz` → `docker exec postgresql-wxinv1oyzrgdrwgupv4tlw2d psql -U $POSTGRES_USER -d directus`. Never touch crf-cms.
 - API routes set `export const prerender = false`. Use the `@/*` alias.
@@ -325,17 +325,206 @@ Flows (all on se-cms, emails via the mail operation, bodies use `when_label`):
 - [ ] **Step 6:** Build flows 1–5, run `directus-flow-tidy`; trigger each with a sandbox booking and confirm emails arrive (check `admin@pepperhorn.com` via Gmail MCP).
 - [ ] **Step 7:** Commit `feat(booking): ICS feed and notification flows`.
 
-### Task 12: SMS reminders (AWS SNS)
+### Task 12: Phone reminders (SMS now, WhatsApp later), verified phones only
 
-**Prerequisite (Shaun):** AWS IAM access key for a dedicated user with only `sns:Publish`, region (e.g. `ap-southeast-2`). If not provided, stop after Step 1 and report.
+**This task replaces its first draft. The rewrite was approved by the operator on 2026-10-21.** The first draft had two defects:
+1. **It installed the crf bundle on se-cms as-is.** The bundle is `directus-extension-operation-sms-aws-sns`. Its bootstrap hook is in `src/hook/index.ts`, with the schema in `src/hook/ticketing-schema.ts` and the names in `src/constants.ts`. The hook runs on every `app.before`, and nothing turns it off. On se-cms it would:
+   - Create `sms_settings`, a singleton with plaintext `aws_*` credential fields.
+   - Create `client_ticket` and `client_message`.
+   - Create relations, starting with `client_ticket.client → family`. se-cms has no `family` collection, so Directus's `RelationsService.createOne` throws `Collection "family" doesn't exist`. The hook catches the error and logs `SMS extension bootstrap failed`.
 
-**Files:** none in repo; se-cms extension + env + flow (record in `docs/booking-schema.md`).
+   That leaves two orphan collections. Their `client`, `assignee` and `ticket` fields are plain uuid columns with no foreign keys, and the partial unique index is never created. The same error is logged on **every** boot. The bundle also mounts a public `/sms-inbound` endpoint, which reads `family`.
+2. **It texted an unverified number.** It sent to `users.phone` whenever `users.sms_opt_in` was set, but nothing ever proved that the number belongs to the client. A typo would text a stranger. That costs money, breaks the GDPR accuracy principle (Art. 5(1)(d)) and tells the stranger about the lesson. The client never gets the reminder.
 
-- [ ] **Step 1:** Build `/home/shaun/sms-interface/directus-extension-operation-sms-aws-sns` (`npm ci && npm run build && npm test`) → tests pass.
-- [ ] **Step 2:** Install into se-cms extensions volume (same method as the OTP extension: copy into `wxinv1oyzrgdrwgupv4tlw2d_directus-extensions`), set Coolify env `SMS_AWS_REGION`, `SMS_AWS_ACCESS_KEY_ID`, `SMS_AWS_SECRET_ACCESS_KEY`, `SMS_AWS_SNS_SENDER_ID=ShaunEvans`; full service restart (`mcp__ph-coolify__control` restart service). Log shows the extension loaded.
-- [ ] **Step 3:** Add to `Booking upkeep` flow: confirmed bookings with `start_at <= $NOW(+2 hours)`, `> $NOW`, `reminder_sms_sent_at` null, user `sms_opt_in` and `phone` set → Send SMS (`Transactional`, body `"Reminder: your lesson with Shaun is at <when_label>. Details: shaunevans.com/account"`) → set `reminder_sms_sent_at`. Run `directus-flow-tidy`.
-- [ ] **Step 4:** SNS sandbox: verify Shaun's number in the SNS console; book a test lesson 2h ahead → SMS received. Remind Shaun to request SNS production access + raise spend cap.
-- [ ] **Step 5:** Commit doc update.
+**Decisions this task follows (2026-10-19 to 2026-10-21):**
+- SMS everywhere, and WhatsApp wherever it is available.
+- shaunevans.com is its own business. It gets its **own** AWS account and its own WhatsApp Business Account, separate from PepperHorn's.
+- Email stays required and is always sent. Phone channels are opt-in.
+
+Two designs are cited below:
+- **The messaging design:** pepperhorn-platform `apps/connect/docs/superpowers/specs/2026-10-19-whatsapp-client-messaging-design.md`, the client-messaging design.
+- **PR #7:** directus-otp-auth `docs/superpowers/specs/2026-10-19-phone-channel-design.md`, the phone-verification design.
+
+**Channel rules (these replace the reminder line in Global Constraints):**
+- The 24 h email reminder from Task 11 always goes out. It is the record.
+- The 2 h phone reminder goes only to `users.phone_e164`, and only when **all** of these hold:
+  - `users.phone_verified_at IS NOT NULL`;
+  - the opt-in flag for that channel is on;
+  - the newest `contact_consent` row for that channel is an `opt_in`.
+- `users.phone` is never messaged by any flow. It is free text, unverified, and kept only for the Mentorship WhatsApp-group hand-off in Task 11 flow 4.
+- WhatsApp is used when the client chose it (`users.preferred_phone_channel = whatsapp`), but only once phase 2 (Step 8) exists. Until then every phone reminder is SMS.
+- The server never switches a client to another channel on its own (PR #7 INV-28). A failed send is not retried on another channel, because the email has already gone.
+
+**Phone verification: reminders stay email-only until PR #7's phone channel is live on se-cms.** This task builds no code sender of its own. A client verifies a mobile number only through PR #7's `POST /phone/start` and `POST /phone/confirm`, from `/account`, after re-confirming by email. Confirming writes `phone_e164`, `phone_country`, `phone_verified_at` and `phone_channel`. This is the simplest safe option because:
+- It is the only option that adds **no new way to send codes**. A home-grown "text me a code" form would be a target for SMS pumping (fraudulent sends that run up the SMS bill). It would lack PR #7's deny-list, its per-country caps, and its per-IP, per-phone and per-account limits.
+- A home-grown form would also pass codes through a Directus flow, which PR #7 INV-26 forbids.
+- It writes the same columns PR #7 owns, so nothing needs migrating later.
+- Email already carries every reminder, so the wait costs a convenience, not a missed lesson.
+
+Steps 1 and 2 can ship now. Nothing sends a text until Prerequisites A, B and C are all done.
+
+**Prerequisites (none of them are done in this repo):**
+
+- **A. A flag in sms-interface (a separate PR in `/home/shaun/sms-interface`). This is the default path for SMS.**
+
+  Add the env var `SMS_TICKETING_BOOTSTRAP`. It defaults to `true`, so crf-admin behaves exactly as it does now. Acceptance criteria:
+  1. When it is `false`, the hook skips `ensureTicketing` entirely: no `client_ticket` or `client_message` collection, no relations and no partial index. It logs one info line, `SMS ticketing bootstrap disabled`.
+  2. `sms_settings` is still created, because the operation reads it when the `SMS_AWS_*` env is incomplete.
+  3. When it is `false`:
+     - `/sms-inbound` answers `404` and never queries `family`;
+     - `sms-ticket-reply` and `sms-number-backfill` throw `ticketing disabled` without touching the database.
+  4. `true`, unset, and any value other than `false` or `0` keep the current behaviour.
+  5. A vitest hook test, with mocked `CollectionsService` and `RelationsService`, asserts:
+     - no `createOne` calls for the ticketing payloads when the flag is `false`;
+     - the current calls when the flag is unset.
+  6. The existing tests pass, and the README documents the flag.
+
+  Why a flag rather than the new bundle: the flag is a small, testable change to a sender that already runs in production. The new `directus-extension-messaging` bundle from the messaging design does not exist yet. That bundle takes collection names from env, has no CRF bootstrap, and its `messaging-send` operation looks up the verified number itself. WhatsApp needs it (phase 2), and it **replaces** the crf bundle on se-cms when it ships.
+
+- **B. PR #7's phone channel, live on se-cms.**
+  - directus-otp-auth runs with `OTP_AUTH_CHANNELS` including `sms`.
+  - `users` gets four columns: `phone_e164` (E.164 format, unique among verified numbers), `phone_country`, `phone_verified_at` and `phone_channel`.
+  - An "Add a mobile" form on `/account` calls `/phone/start` and `/phone/confirm`.
+
+- **C. shaunevans.com's own AWS account (Shaun), in `ap-southeast-2`.**
+  - An IAM user whose only permission is `sns:Publish`.
+  - The sender ID `ShaunEvans`, registered on ACMA's SMS Sender ID Register through AWS (End User Messaging SMS → Registrations → AU sender ID). Branded sender IDs must be registered since 1 July 2026.
+  - If the credentials have not been provided, do Steps 1–2 and stop.
+
+- **D. WhatsApp only (blocks phase 2, but not SMS).**
+  - shaunevans.com's own Meta business portfolio and WhatsApp Business Account, set up through AWS End User Messaging Social.
+  - **A number of its own.** Today the two businesses share one phone number. A number belongs to exactly one WhatsApp Business Account and must not be on consumer WhatsApp, so shaunevans.com needs its own number before WhatsApp can start.
+  - An approved utility template, `lesson_reminder_2h`.
+  - The messaging bundle.
+
+**Files:**
+- Create: `src/lib/legal/consent-text.ts`, `src/lib/booking/__tests__/contact-consent.test.ts`
+- Modify:
+  - `src/pages/api/account/contact.ts`
+  - `src/lib/auth.ts` (`getUserContact` and `updateUserContact`)
+  - `src/components/bookings/BookingPanel.tsx` (the summary-bar phone field and checkbox from Task 9)
+  - `src/components/account/LessonsSection.tsx` (the contact block from Task 10)
+  - the privacy page
+  - `docs/booking-schema.md`
+- se-cms: the `contact_consent` collection, `users` fields, the extension, env vars and the reminder flow.
+
+- [ ] **Step 1: Consent schema on se-cms.** Record everything in `docs/booking-schema.md`.
+  - Create **`contact_consent`**, append-only. It uses the shape from §3.2 of the messaging design, keyed to `users`:
+    - `id`: uuid.
+    - `user`: M2O to `users`, SET NULL on delete.
+    - `phone_hash`: an HMAC-SHA256 of the E.164 number, keyed with `CONSENT_PHONE_HMAC_KEY`, so an opt-out survives account deletion.
+    - `channel`: `sms` or `whatsapp`.
+    - `purpose`: `service`.
+    - `action`: `opt_in` or `opt_out`.
+    - `source`: `account_page`, `booking`, `keyword` or `staff`.
+    - `consent_text_version`.
+    - `occurred_at`: timestamptz.
+  - Add to `users`:
+    - `whatsapp_opt_in`: bool, default false;
+    - `preferred_phone_channel`: `sms` or `whatsapp`, nullable.
+  - Keep `users.sms_opt_in` as the current SMS setting. The messaging bundle reads field names from env, so nothing needs renaming.
+  - Grants on the Production policy:
+    - **create** on `contact_consent` only, with no read, update or delete;
+    - update on `users.sms_opt_in`, `whatsapp_opt_in` and `preferred_phone_channel`.
+  - One-time cleanup: `UPDATE users SET sms_opt_in = false WHERE sms_opt_in`. No consent record backs those opt-ins, and no phone is verified yet. Record how many rows changed.
+  - Verify: a `PATCH` or `DELETE` on a `contact_consent` row with `$DIRECTUS_TOKEN` returns 403.
+
+- [ ] **Step 2: Opt-in capture (repo, test-first).**
+  - **Consent text.** Put it in `consent-text.ts` as `PHONE_REMINDER_CONSENT = { version: "se-phone-reminders-v1", sms: …, whatsapp: … }`. The text sits beside a checkbox that starts **unticked**:
+    - SMS: *"Text me a reminder 2 hours before each lesson, at my verified mobile. Sent by Shaun Evans through Amazon Web Services. Turn it off here any time."*
+    - WhatsApp, shown only once phase 2 exists: *"Send my lesson reminders on WhatsApp instead. Sent by Shaun Evans through Meta (WhatsApp) and Amazon Web Services. Reply STOP or turn it off here any time."*
+  - **`POST /api/account/contact`:**
+    - It still saves `phone` as the unverified contact number.
+    - `sms_opt_in: true` (or `whatsapp_opt_in: true`) without a `phone_verified_at` returns `409 {error:"phone_unverified"}`.
+    - Each change to an opt-in flag first writes **one** `contact_consent` row, then updates the flag. The row records the source (`booking` from the booking panel, `account_page` from `/account`), the current consent text version and `occurred_at`. If nothing changed, no row is written.
+    - The `GET` response adds `phone_verified: boolean` and `verified_phone_last3`.
+  - **UI:** while the client has no verified mobile, the checkbox is disabled and reads "Verify a mobile in your account to get text reminders", linking to `/account#contact`. Shaun approves the wording.
+  - **Privacy page:** add the processor text from §7 of the messaging design, adapted to shaunevans.com:
+    - AWS from now on, and Meta once WhatsApp ships;
+    - the US named as where data is transferred;
+    - how long data is kept.
+
+    Publish it **before** the first opt-in is collected.
+  - Write failing tests in `contact-consent.test.ts` (Directus mocked):
+    - `opt-in without verified phone → 409 phone_unverified`
+    - `opt-in with verified phone writes one ledger row with version and source, then sets the flag`
+    - `opt-out writes an opt_out row`
+    - `re-saving the same state writes no row`
+    - `ledger write failure → 500 and flag unchanged`
+  - Run them and see them fail, implement, and see them pass.
+  - Commit `feat(account): verified-phone reminder opt-in with consent ledger`.
+
+- [ ] **Step 3: Install the sender (needs A and C).**
+  - Build the crf bundle at a commit that includes Prerequisite A: `npm ci && npm run build && npm test`.
+  - Copy it into `wxinv1oyzrgdrwgupv4tlw2d_directus-extensions`, the same way the OTP extension was installed.
+  - Set the Coolify env:
+    - `SMS_TICKETING_BOOTSTRAP=false`
+    - `SMS_AWS_REGION=ap-southeast-2`
+    - `SMS_AWS_ACCESS_KEY_ID`
+    - `SMS_AWS_SECRET_ACCESS_KEY`
+    - `SMS_AWS_SNS_SENDER_ID=ShaunEvans`
+
+    Set **all four** `SMS_AWS_*` vars so `sms_settings` is never read. Do **not** set `SMS_AWS_TWO_WAY_NUMBER` or `SMS_AWS_SPRAY_NUMBER`.
+  - Restart the **whole service**, because env changed: `mcp__ph-coolify__control`, restart service.
+  - Check:
+    - the log shows the bundle loaded and `SMS ticketing bootstrap disabled`, and no `bootstrap failed`;
+    - compared with a snapshot taken before the install, the only new collection is `sms_settings`;
+    - `GET /sms-inbound` returns 404.
+  - **Stop condition:** if `client_ticket` or `client_message` appears, remove the extension, drop both collections, restart, and report.
+
+- [ ] **Step 4: Reminder flow (needs B).** Add it to `Booking upkeep`. Turn **off** the flow's activity and log tracking, so phone numbers and message text never reach `directus_activity` or revisions.
+  - **Select** `confirmed` bookings where:
+    - `start_at <= $NOW(+2 hours)` and `start_at > $NOW`;
+    - `reminder_sms_sent_at` is null;
+    - `user.phone_verified_at` is not null, and `user.phone_e164` is not null;
+    - `user.sms_opt_in = true`;
+    - `user.preferred_phone_channel` is null or `sms`, while WhatsApp is not live.
+  - **Daily cap.** Read `globals.sms_daily_cap`, a new field with default `20`. Count today's sends (`reminder_sms_sent_at` on or after Sydney midnight). At or over the cap, send nothing and email `booking_notify_email` once that day.
+  - **Mark first.** Set `reminder_sms_sent_at` *before* sending, so a retry never texts twice.
+  - **Message text.** A Run Script step builds it from `when_label` and converts it to plain SMS characters (GSM-7) so it fits in one message. It replaces `–` with `-` and `·` with `/`, and drops any other unsupported character. The text is: `Your lesson with Shaun starts at <when>. Details or stop texts: shaunevans.com/account`. The bundle appends `\n\n(do not reply)`. Check that the total is 160 characters or fewer; if it is longer, shorten `<when>` to the client's local time only.
+  - **Send** with the SMS operation to `user.phone_e164`, type `Transactional`.
+  - Run `directus-flow-tidy`.
+  - **STOP:** a named sender like `ShaunEvans` cannot receive replies, so SMS cannot offer "Reply STOP". The way to opt out is the toggle on `/account`, which every text names. Turning it off writes an `opt_out` row and takes effect on the next run. Replying STOP or START arrives with the messaging bundle in phase 2.
+
+- [ ] **Step 5: Test in the SNS sandbox.**
+  - Add Shaun's number to the SNS sandbox destination list.
+  - On a test account, verify that number through PR #7's `/phone/start` and `/phone/confirm`, and opt in.
+  - Turn on SNS delivery-status logging.
+  - Book a test lesson 2 h ahead. Expected:
+    - the SMS arrives from `ShaunEvans`;
+    - it is one message part (`numberOfMessageParts = 1` in the delivery log);
+    - `reminder_sms_sent_at` is set.
+  - Each of these must send no SMS and make no SNS call:
+    - a second account that has opted in but has `phone_verified_at` cleared;
+    - an account that has opted out;
+    - a run with the cap set to `0`.
+
+- [ ] **Step 6: Go-live controls (Shaun in the AWS console; Claude checks each one).**
+  - The ACMA sender-ID registration from Prerequisite C is **approved**. Do not leave the sandbox before then, because an unregistered ID is shown as "Unverified" or blocked.
+  - SMS production access has been requested.
+  - The account's SMS spend limit (`MonthlySpendLimit`) is raised from the sandbox's US$1 to a small fixed amount, e.g. US$10, not unlimited.
+  - A CloudWatch alarm on `AWS/SNS SMSMonthToDateSpentUSD` fires at 80% of the limit and emails `shaun@shaunevans.com`.
+  - `globals.sms_daily_cap` is set (the daily cap).
+  - Any country beyond Australia needs its own sender registration before numbers there are enabled.
+
+- [ ] **Step 7: GDPR record.** Write it in `docs/booking-schema.md`:
+  - **Lawful basis.** The reminder serves the lesson the client booked (Art. 6(1)(b)), and the phone channel is used only after the client opts in. The consent ledger meets the Art. 7(1) standard, so the record still holds if the opt-in is treated as consent.
+  - **Processors.**
+    - AWS, under the AWS DPA in its Service Terms, from now on.
+    - Meta, under the WhatsApp Business Data Processing Terms, from phase 2.
+    - Transfers to the US rely on the EU–US Data Privacy Framework, with standard contractual clauses as a fallback. Add a note for Australian Privacy Principle 8.
+  - **Retention.** The consent ledger is kept for the life of the account plus 6 years. After that only `phone_hash` and the opt-out remain. No message text is stored.
+  - **Erasure** clears `phone_e164` and `phone`, and keeps the opt-out hash.
+
+- [ ] **Step 8: WhatsApp, phase 2 (blocked on D).**
+  - Install `directus-extension-messaging`. Its env names `users`, `phone_e164`, `phone_verified_at`, `whatsapp_opt_in` and `preferred_phone_channel`.
+  - Replace the Step 4 send with `messaging-send`, passing `template_key lesson_reminder_2h`, `account` and the variables, and **no phone number**.
+  - Turn on the WhatsApp consent text.
+  - Turn on replying STOP and START on both channels, through `/messaging/inbound`.
+  - Remove the crf bundle and drop `sms_settings` (a whole-service restart).
+  - Optionally move SMS to the same long code (a full phone number), so replies can come back.
+
+- [ ] **Step 9:** Commit `docs(booking): phone reminders record`. Push.
 
 ### Task 13: Docs + final verification
 

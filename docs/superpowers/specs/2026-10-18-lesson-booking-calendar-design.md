@@ -73,9 +73,9 @@ Why in-house rather than Cal.com: the site already has a cart, OTP sign-in, `use
 - Phase 1: a `meet_link` field on the booking that Shaun fills in; the student is emailed when it's set. Phase 2: Google Calendar API creates the event + Meet and invites the student.
 
 **Notifications**
-- Student: confirmation on booking; **email reminder 24 h before**; **SMS reminder 2 h before** for students who opted in.
+- Student: a confirmation when they book, and an **email reminder 24 h before** that every student gets. Students who opted in also get a **phone reminder 2 h before**: SMS now, and WhatsApp later if they chose it. It goes only to a **verified** mobile (`users.phone_verified_at` set, verified through directus-otp-auth's phone channel, PR #7). Until that ships, reminders are email-only.
 - Shaun: notice on each new booking / cancellation.
-- SMS via the existing `directus-extension-operation-sms-aws-sns` (source `~/sms-interface/directus-extension-operation-sms-aws-sns`, currently installed only on crf-admin) — to be installed on se-cms with AWS SNS set up.
+- SMS is sent by the existing `directus-extension-operation-sms-aws-sns` (source `~/sms-interface/directus-extension-operation-sms-aws-sns`), installed on se-cms **only with `SMS_TICKETING_BOOTSTRAP=false`**. Without that flag, its bootstrap creates CRF's `client_ticket`/`client_message` collections, which relate to a `family` collection se-cms doesn't have. WhatsApp will use the planned `directus-extension-messaging` bundle and shaunevans.com's own AWS account, WhatsApp Business Account and number. See plan Task 12, which revised this on 2026-10-21.
 
 **Account page** (`/account`) shows: lessons (upcoming/past, credits + expiry, cancel/reschedule), **purchases** (sheet music bought), and **orders with their line items**.
 
@@ -131,7 +131,7 @@ Why in-house rather than Cal.com: the site already has a cart, OTP sign-in, `use
 
 **`order_items`** (extend): add optional `lesson` (M2O `lessons`) and `booking` (M2O `bookings`) so a line can be a lesson rather than a product. `product` becomes optional.
 
-**`users`**: use existing `phone`; add `sms_opt_in` (bool).
+**`users`**: use the existing `phone` as an unverified contact number only. It is never messaged. Add `sms_opt_in` (bool). Plan Task 12 adds `whatsapp_opt_in` and `preferred_phone_channel`, plus the `contact_consent` log. The otp-auth phone channel (PR #7) adds `phone_e164`, `phone_country`, `phone_verified_at` and `phone_channel`.
 
 **Double-booking guard (required):** enforce at the database, not by check-then-write. Recommended: a Postgres exclusion constraint on `bookings` over `tstzrange(start_at - padding_before, end_at + padding_after)` `WITH &&`, filtered to `status IN ('held','confirmed')` with unexpired holds (expired holds must be flipped to `cancelled` or excluded — see Holds). If an exclusion constraint is impractical through Directus, use the CRF tasks pattern: insert, re-query overlaps ordered by `(date_created, id)`, keep the earliest, delete the loser and return 409. Builder decides which; the guarantee is what matters.
 
@@ -200,8 +200,23 @@ Implemented as Directus flows (preferred, consistent with existing form-notifica
 - On booking confirmed: email student (time in their booked zone + Sydney, lesson, how the link will arrive, cancellation policy, link to `/account`) and email Shaun.
 - On `meet_link` set/changed: email student.
 - On cancel/reschedule: email student + Shaun.
-- Reminder email 24 h before; reminder SMS 2 h before if `users.sms_opt_in` and `phone` set. Scheduled flow every ~15 min; idempotent via `reminder_*_sent_at`.
-- SMS setup: install `directus-extension-operation-sms-aws-sns` on se-cms (same deploy method as the OTP extension: extensions volume + restart), configure via `SMS_AWS_*` env in Coolify (not the settings collection), dedicated IAM user with `sns:Publish` only, alphanumeric sender ID (e.g. "ShaunEvans" — AU supports it). New SNS accounts are sandboxed (verified numbers only, US$1/month cap) until production access is requested — Shaun to request.
+- **Reminder email** 24 h before, always.
+- **Reminder SMS** 2 h before, only when all of these hold:
+  - `users.phone_verified_at` is set and `users.phone_e164` holds the number;
+  - `users.sms_opt_in` is on;
+  - the newest row for SMS in the `contact_consent` log is an opt-in. The log is append-only and records the time, source and consent-text version.
+
+  `users.phone` (unverified) is never texted.
+- The reminders run as a scheduled flow every ~15 min. `reminder_*_sent_at` stops a reminder going out twice. A daily cap applies.
+- SMS setup:
+  - Install `directus-extension-operation-sms-aws-sns` on se-cms with `SMS_TICKETING_BOOTSTRAP=false`, the same way as the OTP extension (extensions volume + full restart).
+  - Configure it through the `SMS_AWS_*` env vars in Coolify, not the settings collection.
+  - Use shaunevans.com's own AWS account, with a dedicated IAM user that can only call `sns:Publish`.
+  - Send from the alphanumeric sender ID "ShaunEvans". It must be registered on ACMA's sender ID register, which is mandatory since 1 July 2026.
+  - New SNS accounts start in a sandbox: they can text only verified numbers and are capped at US$1/month until production access is granted. Shaun requests production access, sets a fixed spend limit and adds a CloudWatch spend alarm.
+- The sender ID can't receive replies, so students opt out with the toggle on `/account`. Replying STOP arrives with WhatsApp in phase 2.
+
+See plan Task 12.
 
 ### Permissions (se-cms)
 
