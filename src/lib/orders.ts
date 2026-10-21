@@ -173,10 +173,24 @@ export class CheckoutError extends Error {
   }
 }
 
+const PAID_ORDER_STATUSES = ["paid", "fulfilled"];
+
+async function getOrderStatus(orderId: string): Promise<string | null> {
+  try {
+    const order = await directusGet<{ status: string }>(`/items/orders/${encodeURIComponent(orderId)}`, {
+      "fields[]": "id,status",
+    });
+    return order?.status ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Turn the cart's checkout items into priced order lines, using server-side
  * prices only. Throws CheckoutError for holds that are gone / not the
- * caller's (409 hold_expired), packs that need a phone (400 phone_required),
+ * caller's (409 hold_expired), lessons whose order is already paid
+ * (409 already_paid), packs that need a phone (400 phone_required),
  * and unknown items (400).
  */
 export async function resolveCheckoutLines(
@@ -193,9 +207,12 @@ export async function resolveCheckoutLines(
       seenBookings.add(item.booking_id);
       const expired = new CheckoutError(409, { error: "hold_expired", booking_id: item.booking_id });
       const booking = typeof item.booking_id === "string" ? await getBooking(item.booking_id) : null;
+      if (!booking || booking.userId !== userId) throw expired;
+      // A stale cart re-submitting a lesson that was already paid for (and confirmed).
+      if (booking.orderId && PAID_ORDER_STATUSES.includes((await getOrderStatus(booking.orderId)) ?? "")) {
+        throw new CheckoutError(409, { error: "already_paid", booking_id: booking.id });
+      }
       if (
-        !booking ||
-        booking.userId !== userId ||
         booking.status !== "held" ||
         !booking.holdExpiresAt ||
         Date.parse(booking.holdExpiresAt) <= Date.now() ||

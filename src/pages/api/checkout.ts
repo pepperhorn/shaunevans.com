@@ -8,13 +8,16 @@ import {
   type CheckoutItem,
 } from "@/lib/orders";
 import { getPaymentProvider } from "@/lib/payments";
+import { siteUrl } from "@/lib/siteUrl";
 
 export const prerender = false;
 
 type CheckoutRequest = {
   items: CheckoutItem[];
-  currency?: string;
 };
+
+// Prices are AUD in Directus; the client never picks the currency.
+const CURRENCY = "AUD";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -23,7 +26,7 @@ function json(body: unknown, status = 200) {
   });
 }
 
-export const POST: APIRoute = async ({ request, session, url }) => {
+export const POST: APIRoute = async ({ request, session }) => {
   try {
     const sessUser = await session?.get<{ id: number; email: string; name: string | null }>("user");
     if (!sessUser) return json({ error: "auth required" }, 401);
@@ -33,7 +36,7 @@ export const POST: APIRoute = async ({ request, session, url }) => {
       return json({ error: "empty cart" }, 400);
     }
 
-    const currency = body.currency ?? "AUD";
+    const currency = CURRENCY;
     const resolved = await resolveCheckoutLines(body.items, sessUser.id);
 
     const order = await createOrder({
@@ -54,7 +57,7 @@ export const POST: APIRoute = async ({ request, session, url }) => {
         quantity: l.quantity,
         unit_price: l.unit_price,
       })),
-      redirect_url: new URL(`/shop/orders/${order.id}/confirmation`, url.origin).toString(),
+      redirect_url: new URL(`/shop/orders/${order.id}/confirmation`, siteUrl()).toString(),
     });
 
     await attachPaymentSession(order.id, provider.name, link.session_id);

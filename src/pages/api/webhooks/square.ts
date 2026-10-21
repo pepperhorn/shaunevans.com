@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { getPaymentProvider } from "@/lib/payments";
 import { CLOSED_ORDER_STATUSES, markOrderPaid } from "@/lib/orders";
 import { fulfillPaidOrder } from "@/lib/booking/fulfil";
+import { siteUrl } from "@/lib/siteUrl";
 
 export const prerender = false;
 
@@ -10,9 +11,9 @@ export const POST: APIRoute = async ({ request, url }) => {
   const signature = request.headers.get("x-square-hmacsha256-signature") ?? "";
 
   const provider = getPaymentProvider();
-  const requestUrl = (import.meta.env.PUBLIC_SITE_URL as string | undefined)
-    ? new URL(url.pathname, import.meta.env.PUBLIC_SITE_URL as string).toString()
-    : url.toString();
+  // Square signs the URL it was configured to call (the public one); behind the
+  // proxy `url` is the internal http origin, so always rebuild it from siteUrl().
+  const requestUrl = new URL(url.pathname, siteUrl()).toString();
 
   if (!provider.verifyWebhookSignature(rawBody, signature, requestUrl)) {
     return new Response("invalid signature", { status: 401 });

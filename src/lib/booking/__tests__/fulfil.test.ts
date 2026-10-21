@@ -307,6 +307,7 @@ describe("fulfillPaidOrder", () => {
 
 const markOrderPaid = vi.fn();
 const fulfilMock = vi.fn();
+const verifySig = vi.fn((..._a: unknown[]) => true);
 
 vi.mock("@/lib/orders", () => ({
   CLOSED_ORDER_STATUSES: ["cancelled", "refunded"],
@@ -314,25 +315,50 @@ vi.mock("@/lib/orders", () => ({
 }));
 vi.mock("@/lib/payments", () => ({
   getPaymentProvider: () => ({
-    verifyWebhookSignature: () => true,
+    verifyWebhookSignature: (...a: unknown[]) => verifySig(...a),
     parsePaymentEvent: () => ({ status: "paid", payment_session_id: "SQ-ORD", payment_intent_id: "PAY1" }),
   }),
 }));
 
 describe("square webhook", () => {
-  async function post() {
+  async function post(requestUrl = "https://site.test/api/webhooks/square") {
     vi.doMock("@/lib/booking/fulfil", () => ({ fulfillPaidOrder: (...a: unknown[]) => fulfilMock(...a) }));
     vi.resetModules();
     const { POST } = await import("@/pages/api/webhooks/square");
-    const request = new Request("https://site.test/api/webhooks/square", { method: "POST", body: "{}" });
+    const request = new Request(requestUrl, { method: "POST", body: "{}" });
     return (POST as (ctx: unknown) => Promise<Response>)({ request, url: new URL(request.url) });
   }
 
   beforeEach(() => {
     markOrderPaid.mockReset();
     fulfilMock.mockReset();
+    verifySig.mockClear();
+    process.env.PUBLIC_SITE_URL = "https://shaunevans.test";
   });
-  afterEach(() => vi.doUnmock("@/lib/booking/fulfil"));
+  afterEach(() => {
+    vi.doUnmock("@/lib/booking/fulfil");
+    delete process.env.PUBLIC_SITE_URL;
+  });
+
+  it("signs against the runtime PUBLIC_SITE_URL, not the proxied request URL", async () => {
+    markOrderPaid.mockResolvedValue(null);
+    process.env.PUBLIC_SITE_URL = "https://runtime.example";
+    const res = await post("http://10.0.0.5:4321/api/webhooks/square?x=1");
+    expect(res.status).toBe(200);
+    expect(verifySig).toHaveBeenCalledWith("{}", "", "https://runtime.example/api/webhooks/square");
+  });
+
+  it("without PUBLIC_SITE_URL, signs against the configured site, never the raw request URL", async () => {
+    markOrderPaid.mockResolvedValue(null);
+    delete process.env.PUBLIC_SITE_URL;
+    vi.stubEnv("SITE", "https://site.example");
+    try {
+      await post("http://10.0.0.5:4321/api/webhooks/square");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(verifySig).toHaveBeenCalledWith("{}", "", "https://site.example/api/webhooks/square");
+  });
 
   it("webhook calls fulfil when order already paid", async () => {
     markOrderPaid.mockResolvedValue({ id: ORDER, status: "paid" });

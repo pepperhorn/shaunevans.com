@@ -65,6 +65,13 @@ describe("SquareProvider", () => {
     });
   });
 
+  it.each(["APPROVED", "PENDING"])("parsePaymentEvent does not treat %s as paid", (status) => {
+    const body = JSON.stringify({
+      data: { object: { payment: { id: "P1", order_id: "ORD1", status } } },
+    });
+    expect(make().parsePaymentEvent(body)?.status).toBe("other");
+  });
+
   it("verifyWebhookSignature accepts HMAC of url+body", () => {
     const url = "https://site/api/webhooks/square";
     const body = '{"a":1}';

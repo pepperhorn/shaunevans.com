@@ -112,8 +112,8 @@ export class SquareProvider implements PaymentProvider {
     if (!payment) return null;
 
     const statusMap: Record<string, "paid" | "failed" | "refunded" | "other"> = {
+      // APPROVED is authorised but not captured — only COMPLETED is money in.
       COMPLETED: "paid",
-      APPROVED: "paid",
       FAILED: "failed",
       CANCELED: "failed",
     };

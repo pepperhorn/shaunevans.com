@@ -40,7 +40,9 @@ function booking(over: Record<string, unknown> = {}) {
   };
 }
 
-function mockDirectus(opts: { booking?: Record<string, unknown> | null; phone?: string | null } = {}) {
+function mockDirectus(
+  opts: { booking?: Record<string, unknown> | null; phone?: string | null; orderStatus?: string } = {},
+) {
   calls = [];
   vi.stubGlobal(
     "fetch",
@@ -59,6 +61,7 @@ function mockDirectus(opts: { booking?: Record<string, unknown> | null; phone?: 
       }
       if (p === `/items/users/${USER}`) return ok({ id: USER, phone: opts.phone ?? null, sms_opt_in: false });
       if (p === "/items/orders" && c.method === "POST") return ok({ id: "order-1", status: "pending" });
+      if (p === "/items/orders/order-9" && c.method === "GET") return ok({ id: "order-9", status: opts.orderStatus ?? "awaiting_payment" });
       if (p === "/items/order_items" && c.method === "POST")
         return ok((c.body as Array<Record<string, unknown>>).map((l, i) => ({ id: `oi-${i}`, ...l })));
       if (p.startsWith("/items/bookings/") && c.method === "PATCH") return ok({ id: p.split("/").pop() });
@@ -113,6 +116,19 @@ describe("resolveCheckoutLines", () => {
     const err = await rejection(resolveCheckoutLines([{ kind: "lesson_booking", booking_id: BOOKING }], USER));
     expect(err.status).toBe(409);
     expect(err.body).toEqual({ error: "hold_expired", booking_id: BOOKING });
+  });
+
+  it.each(["paid", "fulfilled"])("rejects a booking whose order is already %s with already_paid", async (orderStatus) => {
+    mockDirectus({ booking: booking({ status: "confirmed", order: "order-9" }), orderStatus });
+    const err = await rejection(resolveCheckoutLines([{ kind: "lesson_booking", booking_id: BOOKING }], USER));
+    expect(err.status).toBe(409);
+    expect(err.body).toEqual({ error: "already_paid", booking_id: BOOKING });
+  });
+
+  it("a held booking linked to an unpaid order still resolves (re-checkout)", async () => {
+    mockDirectus({ booking: booking({ order: "order-9" }), orderStatus: "awaiting_payment" });
+    const lines = await resolveCheckoutLines([{ kind: "lesson_booking", booking_id: BOOKING }], USER);
+    expect(lines).toHaveLength(1);
   });
 
   it("prices lesson_booking from lessons.price", async () => {
