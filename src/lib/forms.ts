@@ -7,8 +7,7 @@
  *     to re-validate input the browser sent (never trust the client).
  */
 
-const BASE_URL = import.meta.env.DIRECTUS_URL as string | undefined;
-const TOKEN = import.meta.env.DIRECTUS_TOKEN as string | undefined;
+import { serverEnv } from "@/lib/env";
 
 export const FORM_QUARANTINE_FOLDER_ID = "ff3972b6-aceb-4512-a644-8c3119190a02";
 
@@ -71,11 +70,13 @@ const FORM_FIELDS = [
 ].join(",");
 
 export async function fetchFormById(id: string): Promise<FormDefinition | null> {
-  if (!BASE_URL || !TOKEN) throw new Error("DIRECTUS_URL or DIRECTUS_TOKEN not set");
-  const url = new URL(`${BASE_URL}/items/forms/${id}`);
+  const baseUrl = serverEnv("DIRECTUS_URL");
+  const token = serverEnv("DIRECTUS_TOKEN");
+  if (!baseUrl || !token) throw new Error("DIRECTUS_URL or DIRECTUS_TOKEN not set");
+  const url = new URL(`${baseUrl}/items/forms/${id}`);
   url.searchParams.set("fields[]", FORM_FIELDS);
   const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${TOKEN}` },
+    headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return null;
   const json = (await res.json()) as { data: FormDefinition | null };

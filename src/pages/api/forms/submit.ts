@@ -5,11 +5,13 @@ import {
   FORM_QUARANTINE_FOLDER_ID,
   type FormField,
 } from "@/lib/forms";
+import { serverEnv } from "@/lib/env";
 
 export const prerender = false;
 
-const BASE_URL = import.meta.env.DIRECTUS_URL as string | undefined;
-const TOKEN = import.meta.env.DIRECTUS_TOKEN as string | undefined;
+// Read per call: import.meta.env is inlined at build time.
+const BASE_URL = () => serverEnv("DIRECTUS_URL");
+const TOKEN = () => serverEnv("DIRECTUS_TOKEN");
 
 type SubmissionValue = { field: string; value: string | null; file?: string };
 
@@ -21,14 +23,14 @@ function json(status: number, body: Record<string, unknown>): Response {
 }
 
 async function uploadFileToQuarantine(file: File, formTitle: string): Promise<string | null> {
-  if (!BASE_URL || !TOKEN) return null;
+  if (!BASE_URL() || !TOKEN()) return null;
   const upload = new FormData();
   upload.set("folder", FORM_QUARANTINE_FOLDER_ID);
   upload.set("title", `${formTitle} — ${file.name}`);
   upload.set("file", file, file.name);
-  const res = await fetch(`${BASE_URL}/files`, {
+  const res = await fetch(`${BASE_URL()}/files`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${TOKEN}` },
+    headers: { Authorization: `Bearer ${TOKEN()}` },
     body: upload,
   });
   if (!res.ok) return null;
@@ -53,7 +55,7 @@ function readFieldValue(fd: FormData, field: FormField): string | null {
 }
 
 export const POST: APIRoute = async ({ request }) => {
-  if (!BASE_URL || !TOKEN) return json(500, { error: "CMS not configured" });
+  if (!BASE_URL() || !TOKEN()) return json(500, { error: "CMS not configured" });
 
   let fd: FormData;
   try {
@@ -119,10 +121,10 @@ export const POST: APIRoute = async ({ request }) => {
     return json(400, { ok: false, error: "Please correct the highlighted fields", field_errors: fieldErrors });
   }
 
-  const createRes = await fetch(`${BASE_URL}/items/form_submissions`, {
+  const createRes = await fetch(`${BASE_URL()}/items/form_submissions`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${TOKEN}`,
+      Authorization: `Bearer ${TOKEN()}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({

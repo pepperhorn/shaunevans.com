@@ -7,6 +7,7 @@ import type { AvailabilityRow, Interval } from "./availability";
 import { buildAvailabilityView, DEFAULT_SETTINGS, padInterval, type BookingSettings } from "./slots";
 import { whenLabel } from "./policy";
 import { addDaysIso, zonedParts, BOOKING_TZ } from "./time";
+import { serverEnv } from "@/lib/env";
 
 export type BookingStatus = "held" | "confirmed" | "cancelled" | "completed" | "no_show";
 
@@ -14,19 +15,14 @@ const MIN_MS = 60_000;
 
 // ── Directus REST ───────────────────────────────────────────────────────────
 
-/** Runtime env first (built server), then Vite's build-time env (dev/tests). */
-function env(key: string): string | undefined {
-  return process.env[key] ?? (import.meta.env as Record<string, string | undefined>)[key];
-}
-
 function base(): string {
-  const url = env("DIRECTUS_URL");
+  const url = serverEnv("DIRECTUS_URL");
   if (!url) throw new Error("DIRECTUS_URL not set");
   return url.replace(/\/$/, "");
 }
 
 function token(): string {
-  const t = env("DIRECTUS_TOKEN");
+  const t = serverEnv("DIRECTUS_TOKEN");
   if (!t) throw new Error("DIRECTUS_TOKEN not set");
   return t;
 }

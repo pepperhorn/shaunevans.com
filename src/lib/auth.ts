@@ -12,20 +12,22 @@
  * Mirrors pepperhorn-platform/apps/primary/src/lib/otp-auth.ts.
  */
 
+import { serverEnv } from "@/lib/env";
+
 function directusBase(): string {
-  const url = import.meta.env.DIRECTUS_URL as string | undefined;
+  const url = serverEnv("DIRECTUS_URL");
   if (!url) throw new Error("DIRECTUS_URL not set");
   return url;
 }
 
 function directusToken(): string {
-  const t = import.meta.env.DIRECTUS_TOKEN as string | undefined;
+  const t = serverEnv("DIRECTUS_TOKEN");
   if (!t) throw new Error("DIRECTUS_TOKEN not set");
   return t;
 }
 
 function appSlug(): string {
-  return ((import.meta.env.OTP_AUTH_APP_SLUG as string | undefined) || "shaunevans").trim();
+  return (serverEnv("OTP_AUTH_APP_SLUG") || "shaunevans").trim();
 }
 
 function sessionCookieName(): string {
@@ -37,7 +39,7 @@ function sessionCookieName(): string {
 let warnedUnkeyed = false;
 function otpHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json", ...extra };
-  const key = ((import.meta.env.OTP_AUTH_CALLER_KEY as string | undefined) ?? "").trim();
+  const key = (serverEnv("OTP_AUTH_CALLER_KEY") ?? "").trim();
   if (key) {
     h["x-otp-auth-key"] = key;
   } else if (!warnedUnkeyed) {

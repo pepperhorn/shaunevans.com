@@ -1,16 +1,17 @@
+import { serverEnv } from "@/lib/env";
 import { getProducts } from "@/lib/catalog";
 import { getBooking, getLessonById } from "@/lib/booking/repo";
 import { getUserContact, type UserContact } from "@/lib/auth";
 import type { CheckoutItem } from "@/lib/cart";
 
 function directusBase(): string {
-  const url = import.meta.env.DIRECTUS_URL as string | undefined;
+  const url = serverEnv("DIRECTUS_URL");
   if (!url) throw new Error("DIRECTUS_URL not set");
   return url;
 }
 
 function directusToken(): string {
-  const t = import.meta.env.DIRECTUS_TOKEN as string | undefined;
+  const t = serverEnv("DIRECTUS_TOKEN");
   if (!t) throw new Error("DIRECTUS_TOKEN not set");
   return t;
 }
