@@ -419,8 +419,11 @@ export type FeedBooking = {
   studentNotes: string | null;
 };
 
-/** Confirmed bookings starting in [from, to), with student + lesson names (Shaun's ICS feed). */
-export async function listConfirmedBookingsForFeed(from: number, to: number): Promise<FeedBooking[]> {
+/**
+ * Bookings for Shaun's ICS feed starting in [from, to): `confirmed` plus `completed`, so lessons
+ * stay on the calendar after the upkeep flow marks them completed. With student + lesson names.
+ */
+export async function listFeedBookings(from: number, to: number): Promise<FeedBooking[]> {
   const rows = await request<
     Array<{
       id: string;
@@ -434,7 +437,11 @@ export async function listConfirmedBookingsForFeed(from: number, to: number): Pr
   >("GET", "/items/bookings", {
     params: {
       filter: JSON.stringify({
-        _and: [{ status: { _eq: "confirmed" } }, { start_at: { _gte: iso(from) } }, { start_at: { _lt: iso(to) } }],
+        _and: [
+          { status: { _in: ["confirmed", "completed"] } },
+          { start_at: { _gte: iso(from) } },
+          { start_at: { _lt: iso(to) } },
+        ],
       }),
       fields: "id,start_at,end_at,meet_link,student_notes,user.name,user.email,lesson.name",
       sort: "start_at",

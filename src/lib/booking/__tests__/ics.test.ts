@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderIcs } from "@/lib/booking/ics";
+import { icsTokenMatches, renderIcs } from "@/lib/booking/ics";
 
 const NOW = Date.UTC(2026, 9, 19, 1, 2, 3);
 const S = Date.UTC(2026, 9, 21, 8, 0);
@@ -69,4 +69,18 @@ describe("renderIcs", () => {
     expect(empty).not.toContain("BEGIN:VEVENT");
     expect(empty.endsWith("END:VCALENDAR\r\n")).toBe(true);
   });
+});
+
+describe("icsTokenMatches", () => {
+  it("rejects a missing token", () => expect(icsTokenMatches(null, "s3cret")).toBe(false));
+  it("rejects an empty token", () => expect(icsTokenMatches("", "s3cret")).toBe(false));
+  it("rejects a wrong token, including one of a different length", () => {
+    expect(icsTokenMatches("s3creT", "s3cret")).toBe(false);
+    expect(icsTokenMatches("s3cret-longer", "s3cret")).toBe(false);
+  });
+  it("rejects everything when no token is configured", () => {
+    expect(icsTokenMatches("anything", undefined)).toBe(false);
+    expect(icsTokenMatches("", "")).toBe(false);
+  });
+  it("accepts the right token", () => expect(icsTokenMatches("s3cret", "s3cret")).toBe(true));
 });

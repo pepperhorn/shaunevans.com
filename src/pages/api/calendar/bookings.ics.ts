@@ -1,8 +1,7 @@
 import type { APIRoute } from "astro";
-import { createHash, timingSafeEqual } from "node:crypto";
-import { getBookingSettings, listAvailabilityRows, listConfirmedBookingsForFeed } from "@/lib/booking/repo";
+import { getBookingSettings, listAvailabilityRows, listFeedBookings } from "@/lib/booking/repo";
 import { expandAvailability } from "@/lib/booking/availability";
-import { renderIcs, type IcsEvent } from "@/lib/booking/ics";
+import { icsTokenMatches, renderIcs, type IcsEvent } from "@/lib/booking/ics";
 import { addDaysIso, zonedParts, BOOKING_TZ } from "@/lib/booking/time";
 
 export const prerender = false;
@@ -15,19 +14,11 @@ function feedToken(): string | undefined {
   return process.env.BOOKINGS_ICS_TOKEN ?? (import.meta.env as Record<string, string | undefined>).BOOKINGS_ICS_TOKEN;
 }
 
-/** Constant-time compare; hashing first gives equal-length buffers whatever the input length. */
-function tokenMatches(given: string | null): boolean {
-  const expected = feedToken();
-  if (!expected || !given) return false;
-  const h = (s: string) => createHash("sha256").update(s).digest();
-  return timingSafeEqual(h(given), h(expected));
-}
-
 const notFound = () => new Response("Not found", { status: 404 });
 
-/** Shaun's private calendar subscription: confirmed bookings (+ open availability blocks). */
+/** Shaun's private calendar subscription: confirmed/completed bookings (+ upcoming open availability blocks). */
 export const GET: APIRoute = async ({ url }) => {
-  if (!tokenMatches(url.searchParams.get("token"))) return notFound();
+  if (!icsTokenMatches(url.searchParams.get("token"), feedToken())) return notFound();
   try {
     const now = Date.now();
     const settings = await getBookingSettings();
@@ -35,7 +26,7 @@ export const GET: APIRoute = async ({ url }) => {
     const includeBlocks = url.searchParams.get("blocks") !== "0";
 
     const [bookings, rows] = await Promise.all([
-      listConfirmedBookingsForFeed(now - 30 * DAY_MS, horizonEnd),
+      listFeedBookings(now - 30 * DAY_MS, horizonEnd),
       includeBlocks ? listAvailabilityRows() : Promise.resolve([]),
     ]);
 
@@ -57,7 +48,7 @@ export const GET: APIRoute = async ({ url }) => {
 
     if (includeBlocks) {
       const today = zonedParts(now, BOOKING_TZ).date;
-      const blocks = expandAvailability(rows, addDaysIso(today, -30), addDaysIso(today, settings.horizonWeeks * 7));
+      const blocks = expandAvailability(rows, today, addDaysIso(today, settings.horizonWeeks * 7));
       for (const blk of blocks) {
         events.push({
           uid: `open-${blk.start}@shaunevans.com`,

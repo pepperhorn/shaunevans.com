@@ -1,3 +1,5 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+
 /**
  * Minimal RFC 5545 calendar writer for the bookings subscription feed.
  * UTC instants only (`…Z`), CRLF line endings, lines folded at 75 octets.
@@ -75,4 +77,14 @@ export function renderIcs(events: IcsEvent[], now: number): string {
   }
   lines.push("END:VCALENDAR");
   return lines.map(fold).join(CRLF) + CRLF;
+}
+
+/**
+ * Feed token gate. Constant-time compare; hashing first gives equal-length buffers whatever
+ * the input length. False when either side is missing or empty (an unset token never opens the feed).
+ */
+export function icsTokenMatches(given: string | null | undefined, expected: string | null | undefined): boolean {
+  if (!expected || !given) return false;
+  const h = (s: string) => createHash("sha256").update(s).digest();
+  return timingSafeEqual(h(given), h(expected));
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createBooking, getActiveCredits, listBusy } from "@/lib/booking/repo";
+import { createBooking, getActiveCredits, listBusy, listFeedBookings } from "@/lib/booking/repo";
 import { DEFAULT_SETTINGS } from "@/lib/booking/slots";
 import { sydneyWallToUtc } from "@/lib/booking/time";
 
@@ -233,5 +233,44 @@ describe("listBusy", () => {
     ]);
     const filter = calls[0].url.searchParams.get("filter")!;
     expect(filter).toContain("hold_expires_at");
+  });
+});
+
+describe("listFeedBookings", () => {
+  it("includes completed lessons so past bookings stay on the calendar", async () => {
+    mockDirectus((c) =>
+      c.url.pathname === "/items/bookings"
+        ? ok([
+            {
+              id: "b1",
+              start_at: "2026-10-20T08:00:00.000Z",
+              end_at: "2026-10-20T09:00:00.000Z",
+              meet_link: null,
+              student_notes: null,
+              user: { name: "Jo", email: "jo@example.com" },
+              lesson: { name: "Single" },
+            },
+          ])
+        : undefined,
+    );
+    const from = Date.UTC(2026, 9, 1);
+    const to = Date.UTC(2026, 11, 31);
+    const rows = await listFeedBookings(from, to);
+    const filter = JSON.parse(calls[0].url.searchParams.get("filter")!);
+    expect(filter._and).toContainEqual({ status: { _in: ["confirmed", "completed"] } });
+    expect(filter._and).toContainEqual({ start_at: { _gte: new Date(from).toISOString() } });
+    expect(filter._and).toContainEqual({ start_at: { _lt: new Date(to).toISOString() } });
+    expect(rows).toEqual([
+      {
+        id: "b1",
+        startAt: "2026-10-20T08:00:00.000Z",
+        endAt: "2026-10-20T09:00:00.000Z",
+        studentName: "Jo",
+        studentEmail: "jo@example.com",
+        lessonName: "Single",
+        meetLink: null,
+        studentNotes: null,
+      },
+    ]);
   });
 });
