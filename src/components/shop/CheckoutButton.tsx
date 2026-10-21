@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useStore } from "@nanostores/react";
 import { Button } from "@/components/ui/button";
-import { cart, isHoldExpired, markHoldExpired, toCheckoutItems } from "@/lib/cart";
+import { cart, cartOpen, isHoldExpired, markHoldExpired, removeFromCart, toCheckoutItems } from "@/lib/cart";
 import { sessionState } from "@/lib/sessionClient";
 import AuthOverlay from "./AuthOverlay";
 
@@ -16,6 +16,15 @@ export default function CheckoutButton() {
   const [smsOptIn, setSmsOptIn] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [savingPhone, setSavingPhone] = useState(false);
+
+  // Back button from Square restores this page from bfcache with busy=true.
+  useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setBusy(false);
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
 
   async function proceedToPayment() {
     // Read the store directly: this also runs right after sign-in / phone save.
@@ -32,10 +41,7 @@ export default function CheckoutButton() {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currency: "AUD",
-          items: toCheckoutItems(items),
-        }),
+        body: JSON.stringify({ items: toCheckoutItems(items) }),
       });
       const j = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -49,6 +55,13 @@ export default function CheckoutButton() {
         setBusy(false);
         return;
       }
+      if (res.status === 409 && j.error === "already_paid" && j.booking_id) {
+        const paid = items.find((i) => i.bookingId === j.booking_id);
+        if (paid) removeFromCart(paid.id);
+        setError("This lesson is already paid — it's been removed from your cart.");
+        setBusy(false);
+        return;
+      }
       if (res.status === 400 && j.error === "phone_required") {
         setNeedsPhone(true);
         setBusy(false);
@@ -57,6 +70,7 @@ export default function CheckoutButton() {
       if (!res.ok || !j.ok || !j.redirect_url) {
         throw new Error(j.error ?? "Checkout failed");
       }
+      cartOpen.set("closed");
       window.location.href = j.redirect_url;
     } catch (err) {
       setError((err as Error).message);

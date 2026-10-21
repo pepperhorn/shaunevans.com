@@ -33,7 +33,7 @@ const title = order ? `Order ${order.id.slice(0, 8)}` : "Order confirmation";
           .
         </p>
       ) : (
-        <section class="order-summary">
+        <section class="order-summary" data-clear-cart>
           <p class="order-status text-sm text-slate-500 mb-2">
             Status: <strong>{order.status}</strong>
           </p>
@@ -71,3 +71,14 @@ const title = order ? `Order ${order.id.slice(0, 8)}` : "Order confirmation";
     }
   </main>
 </BaseLayout>
+
+<script>
+  import { cartOpen, clearCart } from "@/lib/cart";
+
+  // Only the found-order branch carries the marker: the buyer is back from
+  // payment, so the cart (incl. held lessons now on this order) is spent.
+  if (document.querySelector(".order-summary[data-clear-cart]")) {
+    clearCart();
+    cartOpen.set("closed");
+  }
+</script>

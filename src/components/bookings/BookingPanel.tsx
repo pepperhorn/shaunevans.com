@@ -315,6 +315,13 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
       if (activeCredit) {
         const r = await postJson("/api/bookings/credit", { credit_id: activeCredit.id, start_at: startIso, visitor_tz: tz });
         if (r.status === 401) return setAuthOpen(true);
+        if (r.status === 409 && r.body.error === "no_credits") {
+          setStatus({ tone: "error", text: "No credits left on this pack." });
+          setSelected(null);
+          refetch();
+          void loadCredits();
+          return;
+        }
         if (r.status === 409) return onTaken();
         if (!r.ok) {
           setStatus({ tone: "error", text: "That credit can't be used for this time. Please refresh and try again." });
@@ -330,6 +337,11 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
       const r = await postJson("/api/bookings/hold", { lesson_slug: lesson.slug, start_at: startIso, visitor_tz: tz });
       if (r.status === 401) return setAuthOpen(true);
       if (r.status === 409) return onTaken();
+      if (r.status === 429 && r.body.error === "too_many_holds") {
+        setStatus({ tone: "error", text: "You're holding too many times — check out or release one first." });
+        setSelected(null);
+        return;
+      }
       if (!r.ok) {
         setStatus({ tone: "error", text: "That time can't be booked any more. Please pick another." });
         setSelected(null);
