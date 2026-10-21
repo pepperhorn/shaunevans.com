@@ -232,3 +232,22 @@ Known edge: an admin cancelling a still-`held` booking without a silent reason g
 ### ICS feed
 
 `GET /api/calendar/bookings.ics?token=<BOOKINGS_ICS_TOKEN>` (`src/pages/api/calendar/bookings.ics.ts`) serves `confirmed` and `completed` bookings from −30 days to the booking horizon. Completed bookings are included because upkeep marks ended lessons `completed` within 15 min, and they should stay on the calendar. It also serves open availability blocks from today to the horizon (`TRANSP:TRANSPARENT`) unless `&blocks=0`. A wrong or missing token returns 404. `icsTokenMatches` in `src/lib/booking/ics.ts` compares the token with `timingSafeEqual` over SHA-256 digests, and the token is read from `process.env` at runtime. It is set in local `.env` and in Coolify app `shaunevans-com-new` (runtime only). Shaun adds the URL in Google Calendar → Other calendars → From URL.
+
+## End-to-end check (Task 13, 2026-10-21)
+
+A local production build (`PUBLIC_SITE_URL=http://127.0.0.1:4455`, `SQUARE_ENVIRONMENT=sandbox`) was driven in a real browser (Playwright, `Australia/Sydney`) against se-cms production, with `booking_notify_email` pointed at a test inbox for the run and restored to `shaun@shaunevans.com` afterwards (read back).
+
+| step | real or simulated | result |
+|---|---|---|
+| Guest picks Sat 24 Oct 11:00 on `/bookings`, Add to cart → OTP sign-in (code read from the inbox) | real | hold `cf19384f…` created, cart shows countdown |
+| Checkout → Square sandbox payment link | real | redirected to `connect.squareupsandbox.com`; order `b1f0ec5d…` AUD 90.00, GST 8.18 |
+| Payment + `payment.updated` delivery | **simulated** | sandbox can't pay a payment-link order (`DRAFT`), and Square can't reach the dev machine. A stand-in OPEN sandbox order was paid for real (`cnon:card-nonce-ok`); its payment object, with `order_id` set to the link's order id, was signed locally and POSTed. Bad signature → 401, signed → 200, replay → 200 |
+| Booking confirmed, order paid, confirmation page | real | booking `confirmed`, order `paid` with `payment_intent_id` |
+| "Lesson confirmed" (student) + "New booking" (notify) emails | real (se-cms flows) | both arrived |
+| ICS feed | real | credit booking + open block present; wrong token → 404 |
+| Cancel from `/account` (> 24 h out) | real | booking `cancelled` (`student_cancelled`), refund credit `92d13f12…` (pack null, expires 2027-10-21); "Lesson cancelled" + "Booking cancelled" emails arrived |
+| Rebook with the credit | real | "Use a credit — Single Coaching Session (1 left…)" → `confirmed` `source=credit` booking `8c1c887c…`; both confirmation emails arrived |
+
+Test data was cleaned up afterwards: bookings cancelled, credit void, the TEMP availability row (`7d38cbad…`) set to draft, the order cancelled with note "SANDBOX E2E test — Task 13", and the test user (id 6) suspended.
+
+`booking_requests` and the public-role / `PUBLIC_DIRECTUS_BOOKING_TOKEN` write path are legacy: the old `BookingForm` was deleted, and `/account` only reads old rows under "Earlier requests".
