@@ -408,6 +408,51 @@ export async function flagOrderAttention(orderId: string, note: string): Promise
   });
 }
 
+export type FeedBooking = {
+  id: string;
+  startAt: string;
+  endAt: string;
+  studentName: string | null;
+  studentEmail: string | null;
+  lessonName: string | null;
+  meetLink: string | null;
+  studentNotes: string | null;
+};
+
+/** Confirmed bookings starting in [from, to), with student + lesson names (Shaun's ICS feed). */
+export async function listConfirmedBookingsForFeed(from: number, to: number): Promise<FeedBooking[]> {
+  const rows = await request<
+    Array<{
+      id: string;
+      start_at: string;
+      end_at: string;
+      meet_link: string | null;
+      student_notes: string | null;
+      user: { name: string | null; email: string | null } | null;
+      lesson: { name: string | null } | null;
+    }>
+  >("GET", "/items/bookings", {
+    params: {
+      filter: JSON.stringify({
+        _and: [{ status: { _eq: "confirmed" } }, { start_at: { _gte: iso(from) } }, { start_at: { _lt: iso(to) } }],
+      }),
+      fields: "id,start_at,end_at,meet_link,student_notes,user.name,user.email,lesson.name",
+      sort: "start_at",
+      limit: "-1",
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    startAt: r.start_at,
+    endAt: r.end_at,
+    studentName: r.user?.name || null,
+    studentEmail: r.user?.email || null,
+    lessonName: r.lesson?.name || null,
+    meetLink: r.meet_link || null,
+    studentNotes: r.student_notes || null,
+  }));
+}
+
 /** The user's unexpired holds (the hold route caps these). */
 export async function countLiveHolds(userId: number): Promise<number> {
   const now = Date.now();

@@ -208,3 +208,27 @@ Existing grants already use `fields: *` with no item filter, so they cover the n
 | `GET /items/lesson_credits?limit=1` | 200 |
 | `GET /items/globals?fields=openai_api_key` | **403** — "You don't have permission to access field \"openai_api_key\"" |
 | `GET /items/globals` (no field list) | 200, returns only `id` + the 8 `booking_*` fields |
+
+## Notification flows (Task 11, 2026-10-21)
+
+All six flows send mail through one shared sub-flow. Each one reads the current rows (not just the event payload), builds `{ to, subject, html }` messages in an `exec` op, and hands the array to a `trigger` op (`iterationMode: serial`). Bodies use the stored `bookings.when_label`. Shaun's copies go to `globals.booking_notify_email`, falling back to `shaun@shaunevans.com`. Item reads use `permissions: $full`. Note that `item-read` on the `globals` singleton returns a **one-row array**, so the exec code takes `[0]`.
+
+Condition ops evaluate with `requireAll`. A gate such as `$trigger.payload.status _eq confirmed` therefore rejects any update whose payload doesn't contain that field, so editing other fields does not re-send emails.
+
+| flow | id | trigger | does |
+|---|---|---|---|
+| Utils → Send booking email | `8f695cc1-081c-4348-80ef-837743369a74` | operation | `mail` op (wysiwyg) with `$trigger.to/subject/html` |
+| Booking confirmed | `fabe39f6-5d8b-46ea-87f3-976ccb733e9b` | action `bookings` create + update, payload `status = confirmed` | waits 5 s, re-reads, still-confirmed rows only → student (lesson, when_label, "Meet link will be emailed", cutoff policy, `/account`, `/contact` + no-show line) + Shaun (student, notes, admin link). The wait lets the credit/reschedule routes' immediate undo (`credit_overspent`, `reschedule_conflict`) land first. |
+| Meet link added | `e030cb7b-4075-4446-bfd7-33f91eef564b` | action `bookings` update, payload has non-empty `meet_link` | student gets the link (confirmed bookings only) |
+| Booking cancelled | `1eb66656-8ba3-4b6e-8422-7ac19227af61` | action `bookings` update, payload `status = cancelled` | student + Shaun. Silent for `cancel_reason` in `hold_expired`, `released`, `credit_overspent`, `reschedule_conflict`. `rescheduled` sends a "moved" note, and the new booking's confirmation follows separately. |
+| Pack purchased | `2c1e65b8-d913-4a5a-b8d9-ff787ad6186d` | action `lesson_credits` create | Shaun only. Skipped for refund credits (`pack = null`). If `pack.requires_phone`: student phone + "add to the Composition Mentorship WhatsApp group". |
+| Order needs attention | `30bf99c8-a877-4797-991e-3ecec3271ec2` | action `orders` update, payload `needs_attention = true` | Shaun: order id, status, buyer email, notes, `https://content.shaunevans.com/admin/content/orders/<id>` |
+| Booking upkeep | `e197fdb0-f2e4-4017-9971-4a1fb8cff260` | schedule `0 */15 * * * *`, accountability `activity` | 1) `held` + `hold_expires_at < $NOW` → `cancelled`, `cancel_reason hold_expired`, `cancelled_at`. 2) `confirmed` + `end_at < $NOW` → `completed`. 3) `lesson_credits` `active` + `expires_at < $NOW` → `expired`. 4) 24 h reminder: `confirmed`, `start_at <= $NOW(+24 hours)`, `start_at > $NOW`, `reminder_email_sent_at` null → stamp `reminder_email_sent_at` **then** send. Stamping first means a mail failure can't cause a resend every 15 min. Steps 1–3 chain on both resolve and reject, so one failure doesn't block the rest. All bulk updates use `emitEvents: false`, so no notification flow fires. |
+
+Studio: `https://content.shaunevans.com/admin/settings/flows/<id>`.
+
+Known edge: an admin cancelling a still-`held` booking without a silent reason gets the cancellation email, because the action event can't see the previous status. SMS reminders (2 h, `sms_opt_in`) are not part of these flows.
+
+### ICS feed
+
+`GET /api/calendar/bookings.ics?token=<BOOKINGS_ICS_TOKEN>` (`src/pages/api/calendar/bookings.ics.ts`) serves confirmed bookings from −30 days to the booking horizon, plus open availability blocks (`TRANSP:TRANSPARENT`) unless `&blocks=0`. A wrong or missing token returns 404. The token is compared with `timingSafeEqual` over SHA-256 digests and read from `process.env` at runtime. It is set in local `.env` and in Coolify app `shaunevans-com-new` (runtime only). Shaun adds the URL in Google Calendar → Other calendars → From URL.
