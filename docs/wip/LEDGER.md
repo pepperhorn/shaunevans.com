@@ -14,6 +14,8 @@ Next ID: 0001
 
 | K | Title | PR | Merged | Notes |
 |---|---|---|---|---|
+| 0001 | Pin pnpm in Dockerfile | #5 | 2026-10-30 | Unpinned pnpm 12 broke the image build; reviewed by Codex |
 
 ## Log
 <!-- One line per status change, newest first: YYYY-MM-DD NNNN old→new — note -->
+2026-10-30 0001 ready→merged — PR #5 squash-merged
