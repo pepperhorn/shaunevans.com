@@ -12,6 +12,10 @@ const now = at("18:00") - 72 * H;
 const labels = (xs: number[]) => xs.map((x) => zonedParts(x, "Australia/Sydney").hhmm);
 
 describe("computeStarts", () => {
+  it("fits 15-minute intros on the existing :00/:30 grid, including a 15-minute block", () => {
+    expect(labels(computeStarts([block("18:00", "19:00")], 15, DEFAULT_SETTINGS, now))).toEqual(["18:00", "18:30"]);
+    expect(labels(computeStarts([block("18:30", "18:45")], 15, DEFAULT_SETTINGS, now))).toEqual(["18:30"]);
+  });
   it("fits 60-min lessons on the half hour", () => {
     expect(labels(computeStarts([block("18:00", "21:00")], 60, DEFAULT_SETTINGS, now))).toEqual([
       "18:00", "18:30", "19:00", "19:30", "20:00",
@@ -41,6 +45,12 @@ describe("buildAvailabilityView", () => {
   const rows: AvailabilityRow[] = [
     { id: "a", entry_type: "available", recurrence: "none", day_of_week: null, start_date: day, end_date: null, start_time: "18:00", end_time: "21:00" },
   ];
+  it("uses the shared busy list for an intro and paid lesson with their own durations", () => {
+    const busy = [block("18:00", "18:15")];
+    const input = { rows, busy, fromDate: day, toDate: day, settings: DEFAULT_SETTINGS, now };
+    expect(labels(buildAvailabilityView({ ...input, durationMins: 15 }).starts)).toEqual(["18:30", "19:00", "19:30", "20:00", "20:30"]);
+    expect(labels(buildAvailabilityView({ ...input, durationMins: 60 }).starts)).toEqual(["18:30", "19:00", "19:30", "20:00"]);
+  });
   it("subtracts busy from blocks", () => {
     const busy = [block("19:00", "20:00")];
     const v = buildAvailabilityView({ rows, busy, fromDate: day, toDate: day, durationMins: 60, settings: DEFAULT_SETTINGS, now });

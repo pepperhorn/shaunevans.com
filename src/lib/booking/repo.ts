@@ -219,7 +219,7 @@ export async function expireStaleHolds(): Promise<void> {
 
 export type HoldResult =
   | { ok: true; id: string; holdExpiresAt: string; whenLabel: string }
-  | { ok: false; reason: "conflict" | "not_bookable" };
+  | { ok: false; reason: "conflict" | "not_bookable" | "free_booking_limit" };
 
 /**
  * Matches the exclusion violation if Directus passes the DB text through (constraint name or SQLSTATE).
@@ -267,10 +267,15 @@ export async function createBooking(input: {
   settings: BookingSettings;
   /** Internal (Task 8 re-occupy of a paid-but-expired hold): skip the grid check; only the DB constraint decides. */
   skipAvailabilityCheck?: boolean;
+  /** Set only from the server-side lesson price. Reschedule excludes its original row. */
+  freeBooking?: { replacesBookingId?: string };
 }): Promise<HoldResult> {
   const { startAt, durationMins, settings } = input;
   const now = Date.now();
   await expireStaleHolds();
+  if (input.freeBooking && await hasLiveFreeBooking(input.userId, input.lessonId, [input.freeBooking.replacesBookingId])) {
+    return { ok: false, reason: "free_booking_limit" };
+  }
 
   const endAt = startAt + durationMins * MIN_MS;
   const busy = padInterval({ start: startAt, end: endAt }, settings);
@@ -312,6 +317,18 @@ export async function createBooking(input: {
         when_label: label,
       },
     });
+    if (input.freeBooking) {
+      // As with credit overspend: detect a competing insert and undo this booking.
+      try {
+        if (await hasLiveFreeBooking(input.userId, input.lessonId, [created.id, input.freeBooking.replacesBookingId])) {
+          await updateBookingStatus(created.id, "cancelled", { cancelled_at: iso(Date.now()), cancel_reason: "free_booking_limit" });
+          return { ok: false, reason: "free_booking_limit" };
+        }
+      } catch (err) {
+        await updateBookingStatus(created.id, "cancelled", { cancelled_at: iso(Date.now()), cancel_reason: "free_booking_limit" });
+        throw err;
+      }
+    }
     return { ok: true, id: created.id, holdExpiresAt: holdExpiresAt ?? "", whenLabel: label };
   } catch (err) {
     if (isOverlapError(err)) return { ok: false, reason: "conflict" };
@@ -469,6 +486,40 @@ export async function countLiveHolds(userId: number): Promise<number> {
     },
   });
   return rows.filter((r) => !!r.hold_expires_at && Date.parse(r.hold_expires_at) > now).length;
+}
+
+/** One live booking per free lesson type and user. Re-read after insert to catch races. */
+export async function hasLiveFreeBooking(userId: number, lessonId: number, excludeIds: Array<string | undefined> = []): Promise<boolean> {
+  const now = iso(Date.now());
+  const rows = await request<Array<{ id: string }>>("GET", "/items/bookings", {
+    params: {
+      filter: JSON.stringify({ _and: [
+        { user: { _eq: userId } }, { lesson: { _eq: lessonId } },
+        { _or: [
+          { status: { _eq: "held" }, hold_expires_at: { _gt: now } },
+          { status: { _eq: "confirmed" }, start_at: { _gt: now } },
+        ] },
+      ] }),
+      fields: "id", limit: "-1",
+    },
+  });
+  return rows.some((r) => !excludeIds.includes(r.id));
+}
+
+/** Use the immutable purchase price, including a free session in a mixed paid order. */
+export async function bookingHasRefundValue(booking: BookingRecord): Promise<boolean> {
+  if (booking.source !== "purchase" || booking.lessonId == null) return false;
+  if (booking.orderItemId) {
+    const line = await request<{ unit_price: string | number } | null>("GET", `/items/order_items/${encodeURIComponent(booking.orderItemId)}`, {
+      params: { fields: "unit_price" },
+    });
+    if (!line) throw new Error("Booking order line missing");
+    return Number(line.unit_price) > 0;
+  }
+  // Legacy admin-created purchases may have no order item; never turn a free lesson into credit.
+  const lesson = await getLessonById(booking.lessonId);
+  if (!lesson) throw new Error("Booking lesson missing");
+  return lesson.price > 0;
 }
 
 // ── Credits ─────────────────────────────────────────────────────────────────

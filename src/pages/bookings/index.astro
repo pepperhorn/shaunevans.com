@@ -4,9 +4,13 @@ import LessonCard from "../../components/bookings/LessonCard.tsx";
 import BookingPanel from "@/components/bookings/BookingPanel.tsx";
 import { Badge } from "../../components/ui/badge.tsx";
 import { getLessons } from "@/lib/catalog";
+import { publicLessons } from "@/lib/booking/selection";
+import { serverEnv } from "@/lib/env";
 import { DEFAULT_SETTINGS } from "@/lib/booking/slots";
 
 const lessons = await getLessons();
+const listedLessons = publicLessons(lessons, serverEnv("BOOKINGS_UNLISTED_SLUGS"));
+const unlistedSlugs = lessons.filter((l) => !listedLessons.includes(l)).map((l) => l.slug);
 // Prerendered page: read the horizon at build time; without CMS env use the default.
 let horizonWeeks = DEFAULT_SETTINGS.horizonWeeks;
 if (import.meta.env.DIRECTUS_URL && import.meta.env.DIRECTUS_TOKEN) {
@@ -46,16 +50,16 @@ const description =
           Packages
         </h2>
         <span class="text-xs text-gray-500 dark:text-gray-400">
-          {lessons.length} options
+          {listedLessons.length} options
         </span>
       </div>
       <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-        {lessons.map((lesson) => <LessonCard lesson={lesson} client:load />)}
+        {listedLessons.map((lesson) => <LessonCard lesson={lesson} client:load />)}
       </div>
     </section>
 
     <section id="booking-panel" class="booking-panel-section mx-auto max-w-4xl scroll-mt-24">
-      <BookingPanel lessons={lessons} horizonWeeks={horizonWeeks} client:only="react" />
+      <BookingPanel lessons={lessons} unlistedSlugs={unlistedSlugs} horizonWeeks={horizonWeeks} client:only="react" />
       <p class="booking-help-link mt-4 text-sm text-gray-700 dark:text-gray-300">
         Not sure which package?
         <a href="/contact" class="underline underline-offset-2">Get in touch</a>.
@@ -70,11 +74,11 @@ const description =
       </h2>
       <ol class="ml-4 list-decimal space-y-2">
         <li>Pick a time in the calendar and add it to your cart (or book with a pack credit).</li>
-        <li>Check out — the time is held for you while you pay.</li>
-        <li>You get a confirmation email, and the lesson link before your session.</li>
+        <li>Check out — the time is held while you complete checkout. Free sessions need no payment.</li>
+        <li>You get a confirmation email, and the session link before your session.</li>
         <li>
           Need to change? Cancel or reschedule from your account up to 24 hours
-          before the lesson.
+          before the session.
         </li>
       </ol>
     </section>

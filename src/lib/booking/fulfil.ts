@@ -6,7 +6,7 @@
  */
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-import { createBooking, getBookingSettings, request, type BookingStatus } from "./repo";
+import { createBooking, getBookingSettings, hasLiveFreeBooking, request, type BookingStatus } from "./repo";
 import { BOOKING_TZ } from "./time";
 
 dayjs.extend(utc);
@@ -34,6 +34,7 @@ type RawLine = {
   lesson: {
     id: number;
     kind: string | null;
+    price: string | number;
     credits: number | null;
     credit_lesson: number | null;
     credit_expiry_months: number | null;
@@ -58,7 +59,7 @@ export async function fulfillPaidOrder(orderId: string): Promise<FulfilResult> {
       filter: JSON.stringify({ order: { _eq: orderId } }),
       fields: [
         "id",
-        "lesson.id,lesson.kind,lesson.credits,lesson.credit_lesson,lesson.credit_expiry_months",
+        "lesson.id,lesson.kind,lesson.price,lesson.credits,lesson.credit_lesson,lesson.credit_expiry_months",
         "booking.id,booking.status,booking.user,booking.lesson,booking.start_at,booking.end_at,booking.visitor_timezone,booking.order,booking.cancel_reason",
       ].join(","),
       limit: "-1",
@@ -76,13 +77,29 @@ export async function fulfillPaidOrder(orderId: string): Promise<FulfilResult> {
       if (b.order !== orderId) {
         flag(supersededNote(b.id));
       } else if (b.status === "held") {
+        if (Number(line.lesson?.price) === 0 && b.user != null && await hasLiveFreeBooking(b.user, b.lesson!, [b.id])) {
+          await request("PATCH", `/items/bookings/${encodeURIComponent(b.id)}`, {
+            params: { fields: "id" },
+            body: { status: "cancelled", cancelled_at: new Date().toISOString(), cancel_reason: "free_booking_limit" },
+          });
+          flag(`Booking ${b.id} could not be confirmed: another session of this free type is already held or booked.`);
+          continue;
+        }
         await request("PATCH", `/items/bookings/${encodeURIComponent(b.id)}`, {
           params: { fields: "id" },
           body: { status: "confirmed", hold_expires_at: null },
         });
-        result.confirmed.push(b.id);
+        if (Number(line.lesson?.price) === 0 && b.user != null && await hasLiveFreeBooking(b.user, b.lesson!, [b.id])) {
+          await request("PATCH", `/items/bookings/${encodeURIComponent(b.id)}`, {
+            params: { fields: "id" },
+            body: { status: "cancelled", cancelled_at: new Date().toISOString(), cancel_reason: "free_booking_limit" },
+          });
+          flag(`Booking ${b.id} could not be confirmed: another session of this free type is already held or booked.`);
+        } else {
+          result.confirmed.push(b.id);
+        }
       } else if (b.status === "cancelled" && LAPSED_HOLD_REASONS.includes(b.cancel_reason ?? "")) {
-        const outcome = await reoccupy(order, line.id, b, existingNotes);
+        const outcome = await reoccupy(order, line.id, b, existingNotes, Number(line.lesson?.price) === 0);
         if (outcome.kind === "confirmed") result.confirmed.push(outcome.id);
         else if (outcome.kind === "attention") flag(slotTakenNote(b.id));
       }
@@ -129,6 +146,7 @@ async function reoccupy(
   orderItemId: string,
   b: RawBooking,
   existingNotes: string,
+  free = false,
 ): Promise<{ kind: "confirmed"; id: string } | { kind: "attention" } | { kind: "done" }> {
   if (existingNotes.split("\n").includes(slotTakenNote(b.id))) return { kind: "attention" };
 
@@ -150,6 +168,7 @@ async function reoccupy(
   const res = await createBooking({
     userId,
     lessonId: b.lesson,
+    freeBooking: free ? {} : undefined,
     startAt,
     durationMins,
     status: "confirmed",
