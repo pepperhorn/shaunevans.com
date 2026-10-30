@@ -15,7 +15,9 @@ Next ID: 0001
 | K | Title | PR | Merged | Notes |
 |---|---|---|---|---|
 | 0001 | Pin pnpm in Dockerfile | #5 | 2026-10-30 | Unpinned pnpm 12 broke the image build; reviewed by Codex |
+| 0002 | Build Pagefind index into dist/client | #7 | 2026-10-30 | Index was 404 on SSR; only posts carry data-pagefind-body; reviewed by Codex |
 
 ## Log
 <!-- One line per status change, newest first: YYYY-MM-DD NNNN old→new — note -->
 2026-10-30 0001 ready→merged — PR #5 squash-merged
+2026-10-30 0002 ready→merged — PR #7 squash-merged
