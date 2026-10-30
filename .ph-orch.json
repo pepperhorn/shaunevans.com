@@ -11,7 +11,7 @@
   "PORT_BASE": "5200",
   "REMOTE": "origin",
   "MERGE": "squash",
-  "GBRAIN_PROJECT": "shaunevans-com",
+  "GBRAIN_PROJECT": "projects/shaunevans-com",
   "IMPL_PROVIDER": "codex",
   "IMPL_MODEL": "gpt-6.1-sol",
   "IMPL_OPTIONS": "{\"reasoningEffort\": \"high\"}",

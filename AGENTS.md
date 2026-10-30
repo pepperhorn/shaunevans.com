@@ -94,7 +94,7 @@ If the spec is ambiguous, the plan is wrong, or scope needs to grow: stop, write
 
 The repo docs are the **source of truth** for this project. GBrain is the **memory across projects and sessions**.
 
-- **Everyone reads.** Before speccing, planning, or starting a task, search GBrain for this project (shaunevans-com), the people involved, related past decisions, and known gotchas. Cite page names you used in your handoff.
+- **Everyone reads.** Before speccing, planning, or starting a task, search GBrain for this project (projects/shaunevans-com), the people involved, related past decisions, and known gotchas. Cite page names you used in your handoff.
 - **The lead writes**, at these points:
   - spec approved → a project page entry
   - ADR accepted → a decision page
