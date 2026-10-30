@@ -11,6 +11,7 @@ type Call = { method: string; url: URL; body: unknown };
 
 const lessons: Record<number, Row> = {
   1: { id: 1, kind: "single", credits: null, credit_lesson: null, credit_expiry_months: 12 },
+  9: { id: 9, kind: "single", price: "0", credits: null, credit_lesson: null, credit_expiry_months: 12 },
   2: { id: 2, kind: "pack", credits: 4, credit_lesson: 1, credit_expiry_months: 12 },
 };
 
@@ -95,6 +96,14 @@ function setup(opts: {
       if (p === "/items/bookings" && c.method === "PATCH") return ok([]); // expireStaleHolds
       if (p === "/items/bookings" && c.method === "GET") {
         const live = (b: Row) => ["held", "confirmed"].includes(b.status as string);
+        // Free-booking policy query (per user and lesson type, excluding expired/past rows).
+        if (filter._and?.some((f: Row) => f.lesson)) {
+          const user = filter._and.find((f: Row) => f.user)?.user._eq;
+          const lesson = filter._and.find((f: Row) => f.lesson)?.lesson._eq;
+          return ok([...store.bookings.values()].filter((b) => b.user === user && b.lesson === lesson &&
+            ((b.status === "held" && Date.parse(String(b.hold_expires_at)) > Date.now()) ||
+             (b.status === "confirmed" && Date.parse(String(b.start_at)) > Date.now()))));
+        }
         // replacement lookup: other bookings for an order_item, any status
         if (filter.order_item) {
           const oi = filter.order_item._eq;
@@ -388,5 +397,40 @@ describe("square webhook", () => {
     const res = await post();
     expect(res.status).toBe(200);
     expect(fulfilMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("free session fulfilment through the shared paid-order path", () => {
+  it("confirms a held free session and replays without another booking or credit", async () => {
+    setup({ items: [{ id: "oi-1", lesson: 9, booking: "bk-1" }], bookings: [heldBooking({ lesson: 9 })] });
+    expect(await fulfillPaidOrder(ORDER)).toMatchObject({ confirmed: ["bk-1"], credits: [], attention: [] });
+    expect(store.bookings.get("bk-1")).toMatchObject({ status: "confirmed", hold_expires_at: null });
+    const writes = calls.filter((c) => c.method !== "GET").length;
+    expect(await fulfillPaidOrder(ORDER)).toEqual({ confirmed: [], credits: [], attention: [] });
+    expect(calls.filter((c) => c.method !== "GET")).toHaveLength(writes);
+    expect(store.bookings.size).toBe(1);
+    expect(store.credits).toHaveLength(0);
+  });
+
+  it("does not confirm an expired free hold when a new hold for the same type exists", async () => {
+    setup({ items: [{ id: "oi-1", lesson: 9, booking: "bk-1" }], bookings: [
+      heldBooking({ lesson: 9, hold_expires_at: "2020-01-01T00:00:00Z" }),
+      heldBooking({ id: "new-hold", lesson: 9 }),
+    ] });
+    expect((await fulfillPaidOrder(ORDER)).attention).toHaveLength(1);
+    expect(store.bookings.get("bk-1")!.status).toBe("cancelled");
+    expect(store.bookings.get("new-hold")!.status).toBe("held");
+    expect(store.order.needs_attention).toBe(true);
+    expect(store.credits).toHaveLength(0);
+  });
+
+  it("does not reoccupy a swept free hold if the same free type is booked elsewhere", async () => {
+    setup({ items: [{ id: "oi-1", lesson: 9, booking: "bk-1" }], bookings: [
+      heldBooking({ lesson: 9, status: "cancelled", cancel_reason: "hold_expired" }),
+      heldBooking({ id: "other-booking", lesson: 9, status: "confirmed", order_item: "other-line" }),
+    ] });
+    expect((await fulfillPaidOrder(ORDER)).attention).toHaveLength(1);
+    expect(store.bookings.size).toBe(2);
+    expect(store.credits).toHaveLength(0);
   });
 });

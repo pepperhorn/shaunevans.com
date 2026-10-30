@@ -96,6 +96,7 @@ export type Order = {
   payment_intent_id: string | null;
   paid_at: string | null;
   delivered_at: string | null;
+  needs_attention?: boolean;
 };
 
 /** The created order plus the ids of its order_items (with the booking each one carries). */
@@ -124,6 +125,9 @@ export async function createOrder(input: NewOrderInput): Promise<CreatedOrder> {
     subtotal,
     tax,
     total,
+    ...(input.lines.length > 0 && input.lines.every((line) => line.unit_price === 0)
+      ? { payment_provider: null, payment_session_id: null, payment_intent_id: null }
+      : {}),
   });
 
   const created = await directusPost<Array<{ id: string; booking: string | null }>>(
@@ -293,6 +297,40 @@ export async function markOrderPaid(
   });
   const existing = found[0];
   if (!existing) return null;
+  return transitionOrderPaid(existing, paymentIntentId);
+}
+
+/** Retry only the exact authenticated, booking-only free cart; never absorb paid/mixed lines. */
+export async function getReusableFreeBookingOrder(items: CheckoutItem[], userId: number): Promise<CreatedOrder | null> {
+  if (!items.length || items.some((i) => i.kind !== "lesson_booking")) return null;
+  const bookings = await Promise.all(items.map((i) => getBooking((i as { booking_id: string }).booking_id)));
+  const orderId = bookings[0]?.orderId;
+  if (!orderId || bookings.some((b) => !b || b.userId !== userId || b.orderId !== orderId)) return null;
+  const order = await getOrderForUser(orderId, userId);
+  if (!order || Number(order.total) !== 0 || order.payment_provider != null || order.payment_session_id != null ||
+      order.payment_intent_id != null || !["pending", "paid", "fulfilled"].includes(order.status)) return null;
+  const lines = await directusGet<Array<{ id: string; booking: string | null; unit_price: string }>>("/items/order_items", {
+    "filter[order][_eq]": orderId, fields: "id,booking,unit_price", limit: "-1",
+  });
+  const ids = new Set(bookings.map((b) => b!.id));
+  if (lines.length !== ids.size || lines.some((l) => !l.booking || !ids.has(l.booking) || Number(l.unit_price) !== 0)) return null;
+  return { ...order, lines };
+}
+
+/** Existing nullable payment fields represent no payment; no new provider/status enum. */
+export async function markFreeOrderPaid(orderId: string): Promise<Order> {
+  const order = await directusGet<Order>(`/items/orders/${encodeURIComponent(orderId)}`);
+  const lines = await directusGet<Array<{ unit_price: string }>>("/items/order_items", {
+    "filter[order][_eq]": orderId, fields: "unit_price", limit: "-1",
+  });
+  if (Number(order.total) !== 0 || lines.length === 0 || !lines.every((l) => Number(l.unit_price) === 0) ||
+      order.payment_provider != null || order.payment_session_id != null || order.payment_intent_id != null) {
+    throw new CheckoutError(409, { error: "not_free_order" });
+  }
+  return transitionOrderPaid(order, null);
+}
+
+async function transitionOrderPaid(existing: Order, paymentIntentId: string | null): Promise<Order> {
   // Already paid → return as-is (webhook replays still fulfil). Cancelled / refunded
   // orders must never flip back to paid (e.g. a refund's payment.updated still says COMPLETED).
   if (["paid", "fulfilled", ...CLOSED_ORDER_STATUSES].includes(existing.status)) return existing;
@@ -313,6 +351,7 @@ export type OrderWithItems = Order & {
     quantity: number;
     unit_price: string;
     line_total: string;
+    booking?: string | null;
   }>;
 };
 
@@ -335,7 +374,7 @@ export async function getOrderForUser(
       `/items/orders/${encodeURIComponent(orderId)}`,
       {
         "fields[]":
-          "id,status,user,email,currency,subtotal,tax,total,payment_provider,payment_session_id,payment_intent_id,paid_at,delivered_at,items.id,items.name,items.slug,items.quantity,items.unit_price,items.line_total",
+          "id,status,user,email,currency,subtotal,tax,total,payment_provider,payment_session_id,payment_intent_id,paid_at,delivered_at,items.id,items.name,items.slug,items.quantity,items.unit_price,items.line_total,items.booking,needs_attention",
       },
     );
     if (order.user !== userId) return null;

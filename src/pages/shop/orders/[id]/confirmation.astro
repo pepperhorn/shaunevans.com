@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import { getOrderForUser } from "@/lib/orders";
+import { request } from "@/lib/booking/repo";
 
 export const prerender = false;
 
@@ -8,12 +9,21 @@ const orderId = Astro.params.id!;
 const sessUser = await Astro.session?.get<{ id: number; email: string; name: string | null }>("user");
 
 const order = sessUser ? await getOrderForUser(orderId, sessUser.id) : null;
+const isFree = order != null && Number(order.total) === 0;
+const freeSession = isFree && order?.items.every((line) => line.booking);
+// Follow bookings.order_item, including rescheduled/reoccupied replacements; a paid
+// order alone cannot prove the session is still confirmed when this page is revisited.
+const sessionRows = freeSession && sessUser ? await request<Array<{ order_item: string; status: string }>>("GET", "/items/bookings", {
+  params: { filter: JSON.stringify({ order: { _eq: order!.id }, user: { _eq: sessUser.id } }), fields: "order_item,status", limit: "-1" },
+}) : [];
+const freeConfirmed = freeSession && !order!.needs_attention && order!.items.every((line) => sessionRows.some((b) => b.order_item === line.id && b.status === "confirmed"));
+const freeName = order?.items.length === 1 ? order.items[0].name.split(" — ")[0] : "Sessions";
 const title = order ? `Order ${order.id.slice(0, 8)}` : "Order confirmation";
 ---
 
 <BaseLayout title={title} is404Page={false}>
   <main class="order-confirmation mx-auto max-w-2xl px-4 py-12">
-    <h1 class="font-overpass-mono text-3xl uppercase mb-4">Thanks for your order</h1>
+    <h1 class="order-confirmation-title font-overpass-mono text-3xl uppercase mb-4">{freeConfirmed ? `${freeName} confirmed` : "Thanks for your order"}</h1>
 
     {
       !sessUser ? (
@@ -35,7 +45,7 @@ const title = order ? `Order ${order.id.slice(0, 8)}` : "Order confirmation";
       ) : (
         <section class="order-summary" data-clear-cart>
           <p class="order-status text-sm text-slate-500 mb-2">
-            Status: <strong>{order.status}</strong>
+            Status: <strong>{isFree && ["paid", "fulfilled"].includes(order.status) ? (order.needs_attention ? "Needs attention" : "Complete") : order.status}</strong>
           </p>
           <p class="text-sm text-slate-500 mb-6">Order ID: <code>{order.id}</code></p>
 
@@ -62,10 +72,17 @@ const title = order ? `Order ${order.id.slice(0, 8)}` : "Order confirmation";
             Includes {order.tax} {order.currency} GST
           </p>
 
-          <p class="text-sm text-slate-500 mt-6">
-            If payment has just completed, the status will update once Square
-            confirms it. We'll email your downloads to <strong>{order.email}</strong>.
-          </p>
+          {isFree ? (
+            <p class="order-free-note text-sm text-slate-500 mt-6">
+              {order.needs_attention ? "Your booking needs Shaun's attention. Please get in touch if you don't receive an update." : "Your session details are in your account. Confirmed sessions receive an email with the session name and time; the session link is sent before your time."}
+              {" "}<a class="order-account-link underline" href="/account">View your account</a>.
+            </p>
+          ) : (
+            <p class="order-paid-note text-sm text-slate-500 mt-6">
+              If payment has just completed, the status will update once Square confirms it.
+              We'll email your downloads to <strong>{order.email}</strong>.
+            </p>
+          )}
         </section>
       )
     }
