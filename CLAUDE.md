@@ -196,7 +196,7 @@ The block sub-collections (`block_*`) are M2A targets — Directus silently retu
 - M2M write through Directus REST: send `post_tags: [{ post_tags_id: "<uuid>" }, ...]` on create; the API inserts junction rows.
 - Fonts: the site uses `font-overpass-mono` (display) and `font-inconsolata` (body), loaded via `@fontsource-variable/*`. The global preference for `Poppins` does not apply here — match the existing typography.
 - Branch naming used by recent work: `claude/<topic>` (e.g. `claude/directus-frontend-wiring`, `claude/astro-lesson-bookings-2dKmg`).
-- Pagefind search index is built into `dist/pagefind/` by the `postbuild` script — search lives at `/pagefind`. Pages must include the `data-pagefind-body` attribute somewhere in the markup to be indexed (see `CmsPostLayout.astro`).
+- Pagefind search index is built into `dist/client/pagefind/` by the `postbuild` script — search lives at `/pagefind`. Pages must include the `data-pagefind-body` attribute somewhere in the markup to be indexed (see `CmsPostLayout.astro`).
 - Dark mode is class-based (`.dark` on `<html>`); a `ThemeToggle` lives in the header.
 
 ## Likely-orphan code
