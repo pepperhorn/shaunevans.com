@@ -27,4 +27,8 @@ venv
 
 **/CLAUDE.local.md
 *CLAUDE*
+!CLAUDE.md
 .superpowers/
+
+# ph-orch worktrees
+.worktrees/

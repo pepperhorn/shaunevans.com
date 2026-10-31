@@ -9,7 +9,7 @@
     "preview": "astro preview",
     "astro": "astro",
     "test": "vitest run",
-    "postbuild": "pagefind --site dist && node scripts/warm-image-cache.mjs",
+    "postbuild": "pagefind --site dist/client && node scripts/warm-image-cache.mjs",
     "create": "node scripts/create-content.js",
     "update-post": "node scripts/update-post.js",
     "update": "node scripts/update-post.js",
