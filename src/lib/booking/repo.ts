@@ -410,6 +410,21 @@ export async function cancelConfirmedBooking(id: string, reason: string): Promis
   return Array.isArray(rows) && rows.some((r) => r.id === id);
 }
 
+/**
+ * Compare-and-set a held booking belonging to `orderId`. Returns false when the row left `held`
+ * or moved to another order, so a delayed fulfilment can never overwrite a later cancellation.
+ */
+export async function transitionHeldBooking(id: string, orderId: string, data: Record<string, unknown>): Promise<boolean> {
+  const rows = await request<Array<{ id: string }>>("PATCH", "/items/bookings", {
+    params: { fields: "id" },
+    body: {
+      query: { filter: { _and: [{ id: { _eq: id } }, { status: { _eq: "held" } }, { order: { _eq: orderId } }] }, limit: 1 },
+      data,
+    },
+  });
+  return Array.isArray(rows) && rows.some((r) => r.id === id);
+}
+
 /** Flag an order for Shaun: `needs_attention = true` and `note` appended to `orders.notes`. */
 export async function flagOrderAttention(orderId: string, note: string): Promise<void> {
   const order = await request<{ notes: string | null }>("GET", `/items/orders/${encodeURIComponent(orderId)}`, {

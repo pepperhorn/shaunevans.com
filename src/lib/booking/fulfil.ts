@@ -6,7 +6,7 @@
  */
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-import { createBooking, getBookingSettings, hasLiveFreeBooking, request, type BookingStatus } from "./repo";
+import { cancelConfirmedBooking, createBooking, getBookingSettings, hasLiveFreeBooking, request, transitionHeldBooking, type BookingStatus } from "./repo";
 import { BOOKING_TZ } from "./time";
 
 dayjs.extend(utc);
@@ -49,6 +49,9 @@ export const supersededNote = (bookingId: string) =>
 export const slotTakenNote = (bookingId: string) =>
   `Booking ${bookingId} could not be confirmed: slot taken after hold expired — refund or rebook.`;
 
+const freeLimitNote = (bookingId: string) =>
+  `Booking ${bookingId} could not be confirmed: another session of this free type is already held or booked.`;
+
 export async function fulfillPaidOrder(orderId: string): Promise<FulfilResult> {
   const id = encodeURIComponent(orderId);
   const order = await request<RawOrder>("GET", `/items/orders/${id}`, {
@@ -77,24 +80,31 @@ export async function fulfillPaidOrder(orderId: string): Promise<FulfilResult> {
       if (b.order !== orderId) {
         flag(supersededNote(b.id));
       } else if (b.status === "held") {
-        if (Number(line.lesson?.price) === 0 && b.user != null && await hasLiveFreeBooking(b.user, b.lesson!, [b.id])) {
-          await request("PATCH", `/items/bookings/${encodeURIComponent(b.id)}`, {
-            params: { fields: "id" },
-            body: { status: "cancelled", cancelled_at: new Date().toISOString(), cancel_reason: "free_booking_limit" },
+        const free = Number(line.lesson?.price) === 0;
+        if (free && b.user != null && await hasLiveFreeBooking(b.user, b.lesson!, [b.id])) {
+          const refused = await transitionHeldBooking(b.id, orderId, {
+            status: "cancelled",
+            cancelled_at: new Date().toISOString(),
+            cancel_reason: "free_booking_limit",
           });
-          flag(`Booking ${b.id} could not be confirmed: another session of this free type is already held or booked.`);
+          if (refused) flag(freeLimitNote(b.id));
           continue;
         }
-        await request("PATCH", `/items/bookings/${encodeURIComponent(b.id)}`, {
-          params: { fields: "id" },
-          body: { status: "confirmed", hold_expires_at: null },
-        });
-        if (Number(line.lesson?.price) === 0 && b.user != null && await hasLiveFreeBooking(b.user, b.lesson!, [b.id])) {
-          await request("PATCH", `/items/bookings/${encodeURIComponent(b.id)}`, {
-            params: { fields: "id" },
-            body: { status: "cancelled", cancelled_at: new Date().toISOString(), cancel_reason: "free_booking_limit" },
+        const won = await transitionHeldBooking(b.id, orderId, { status: "confirmed", hold_expires_at: null });
+        if (!won) {
+          // The row moved after we read it. Only a lapsed hold still needs this payment honoured.
+          const current = await request<RawBooking>("GET", `/items/bookings/${encodeURIComponent(b.id)}`, {
+            params: { fields: "id,status,user,lesson,start_at,end_at,visitor_timezone,order,cancel_reason" },
           });
-          flag(`Booking ${b.id} could not be confirmed: another session of this free type is already held or booked.`);
+          if (current.order === orderId && current.status === "cancelled" && LAPSED_HOLD_REASONS.includes(current.cancel_reason ?? "")) {
+            const outcome = await reoccupy(order, line.id, current, existingNotes, free);
+            if (outcome.kind === "confirmed") result.confirmed.push(outcome.id);
+            else if (outcome.kind === "attention") flag(slotTakenNote(b.id));
+          }
+          continue;
+        }
+        if (free && b.user != null && await hasLiveFreeBooking(b.user, b.lesson!, [b.id])) {
+          if (await cancelConfirmedBooking(b.id, "free_booking_limit")) flag(freeLimitNote(b.id));
         } else {
           result.confirmed.push(b.id);
         }
