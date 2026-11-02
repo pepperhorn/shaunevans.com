@@ -6,7 +6,7 @@ vi.mock("@/lib/catalog", () => ({
   ],
 }));
 
-import { CheckoutError, createOrder, linkBookingsToOrder, markOrderPaid, resolveCheckoutLines } from "@/lib/orders";
+import { CheckoutError, createOrder, linkBookingsToOrder, markFreeOrderPaid, getReusableFreeBookingOrder, markOrderPaid, resolveCheckoutLines } from "@/lib/orders";
 import { normalizePhone } from "@/lib/phone";
 import { toCheckoutItems, type CartItem } from "@/lib/cart";
 
@@ -184,6 +184,15 @@ describe("resolveCheckoutLines", () => {
 });
 
 describe("createOrder + linkBookingsToOrder", () => {
+  it("creates a zero-total order with explicitly null payment fields", async () => {
+    mockDirectus();
+    await createOrder({ user_id: USER, email: "a@b.c", currency: "AUD", lines: [
+      { lesson_id: 9, booking_id: BOOKING, name: "Consultation", slug: "bws-consultation", unit_price: 0, quantity: 1 },
+    ] });
+    expect(calls.find((c) => c.url.pathname === "/items/orders")!.body).toMatchObject({
+      total: "0.00", tax: "0.00", subtotal: "0.00", payment_provider: null, payment_session_id: null, payment_intent_id: null,
+    });
+  });
   it("keeps the 1/11 GST back-calculation, writes lesson/booking columns, and links bookings", async () => {
     mockDirectus();
     const order = await createOrder({
@@ -264,5 +273,54 @@ describe("markOrderPaid", () => {
   it("flips an awaiting_payment order to paid", async () => {
     stubOrder("awaiting_payment");
     expect(await markOrderPaid("SQ-ORD", "PAY1")).toMatchObject({ id: "order-1", status: "paid", payment_intent_id: "PAY1" });
+  });
+});
+
+describe("free order completion", () => {
+  let order: Record<string, unknown>;
+  let freeLines: Array<Record<string, unknown>>;
+  beforeEach(() => {
+    order = { id: "order-free", user: USER, status: "pending", total: "0.00", payment_provider: null, payment_session_id: null, payment_intent_id: null };
+    freeLines = [{ id: "line-free", booking: BOOKING, unit_price: "0.00" }];
+    calls = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? "GET";
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      calls.push({ method, url, body });
+      if (url.pathname === "/items/orders/order-free") {
+        if (method === "PATCH") Object.assign(order, body);
+        return ok(order);
+      }
+      if (url.pathname === "/items/order_items") return ok(freeLines);
+      if (url.pathname === "/items/bookings") return ok([booking({ order: "order-free", user: USER })]);
+      throw new Error(`unmocked ${method} ${url.pathname}`);
+    }));
+  });
+
+  it("marks a free order paid once with no fake payment identifiers", async () => {
+    expect(await markFreeOrderPaid("order-free")).toMatchObject({ status: "paid", paid_at: new Date(NOW).toISOString(), payment_intent_id: null, payment_provider: null });
+    await markFreeOrderPaid("order-free");
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(1);
+  });
+  it.each(["cancelled", "refunded"])("does not reopen a %s free order", async (status) => {
+    order.status = status;
+    expect((await markFreeOrderPaid("order-free")).status).toBe(status);
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
+  });
+  it.each(["paid line", "positive total", "provider", "empty"])("rejects a purported free order with %s", async (scenario) => {
+    if (scenario === "paid line") freeLines[0].unit_price = "90";
+    if (scenario === "positive total") order.total = "90";
+    if (scenario === "provider") order.payment_provider = "square";
+    if (scenario === "empty") freeLines = [];
+    await expect(markFreeOrderPaid("order-free")).rejects.toMatchObject({ status: 409 });
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
+  });
+  it("reuses only the exact owned free booking cart", async () => {
+    expect(await getReusableFreeBookingOrder([{ kind: "lesson_booking", booking_id: BOOKING }], USER)).toMatchObject({ id: "order-free" });
+    expect(await getReusableFreeBookingOrder([{ kind: "lesson_booking", booking_id: BOOKING }], 99)).toBeNull();
+    expect(await getReusableFreeBookingOrder([{ kind: "lesson_booking", booking_id: BOOKING }, { product_id: "paid", quantity: 1 }], USER)).toBeNull();
+    freeLines.push({ id: "other", booking: "someone-else", unit_price: "0" });
+    expect(await getReusableFreeBookingOrder([{ kind: "lesson_booking", booking_id: BOOKING }], USER)).toBeNull();
   });
 });

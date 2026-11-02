@@ -11,6 +11,7 @@ type Call = { method: string; url: URL; body: unknown };
 
 const lessons: Record<number, Row> = {
   1: { id: 1, kind: "single", credits: null, credit_lesson: null, credit_expiry_months: 12 },
+  9: { id: 9, kind: "single", price: "0", credits: null, credit_lesson: null, credit_expiry_months: 12 },
   2: { id: 2, kind: "pack", credits: 4, credit_lesson: 1, credit_expiry_months: 12 },
 };
 
@@ -29,6 +30,8 @@ type Store = {
 let store: Store;
 let calls: Call[] = [];
 let seq = 0;
+/** Simulates a parallel request changing the row after fulfilment read it. */
+let beforeConditionalPatch: ((row: Row) => void) | undefined;
 
 const ok = (data: unknown) => new Response(JSON.stringify({ data }), { status: 200 });
 const masked500 = () =>
@@ -92,9 +95,26 @@ function setup(opts: {
         );
       }
       if (p === "/items/globals") return ok({});
-      if (p === "/items/bookings" && c.method === "PATCH") return ok([]); // expireStaleHolds
+      if (p === "/items/bookings" && c.method === "PATCH") {
+        const { query, data } = c.body as { query: { filter: { _and: Row[] } }; data: Row };
+        const want = (k: string) => (query.filter._and.find((f) => f[k])?.[k] as Row | undefined)?._eq;
+        const row = store.bookings.get(String(want("id")));
+        if (!row) return ok([]); // expireStaleHolds has no id clause
+        beforeConditionalPatch?.(row);
+        if (row.status !== want("status") || (want("order") !== undefined && row.order !== want("order"))) return ok([]);
+        Object.assign(row, data);
+        return ok([{ id: row.id }]);
+      }
       if (p === "/items/bookings" && c.method === "GET") {
         const live = (b: Row) => ["held", "confirmed"].includes(b.status as string);
+        // Free-booking policy query (per user and lesson type, excluding expired/past rows).
+        if (filter._and?.some((f: Row) => f.lesson)) {
+          const user = filter._and.find((f: Row) => f.user)?.user._eq;
+          const lesson = filter._and.find((f: Row) => f.lesson)?.lesson._eq;
+          return ok([...store.bookings.values()].filter((b) => b.user === user && b.lesson === lesson &&
+            ((b.status === "held" && Date.parse(String(b.hold_expires_at)) > Date.now()) ||
+             (b.status === "confirmed" && Date.parse(String(b.start_at)) > Date.now()))));
+        }
         // replacement lookup: other bookings for an order_item, any status
         if (filter.order_item) {
           const oi = filter.order_item._eq;
@@ -108,6 +128,9 @@ function setup(opts: {
         const id = `bk-new-${++seq}`;
         store.bookings.set(id, { id, ...(c.body as Row) });
         return ok({ id });
+      }
+      if (p.startsWith("/items/bookings/") && c.method === "GET") {
+        return ok(store.bookings.get(decodeURIComponent(p.split("/").pop()!)));
       }
       if (p.startsWith("/items/bookings/") && c.method === "PATCH") {
         const id = decodeURIComponent(p.split("/").pop()!);
@@ -177,7 +200,32 @@ describe("fulfillPaidOrder", () => {
     const second = await fulfillPaidOrder(ORDER);
     expect(second).toEqual({ confirmed: [], credits: [], attention: [] });
     expect(store.credits).toHaveLength(1);
-    expect(calls.filter((c) => c.method === "PATCH" && c.url.pathname === "/items/bookings/bk-1")).toHaveLength(1);
+    expect(calls.filter((c) => c.method === "PATCH" && c.url.pathname === "/items/bookings")).toHaveLength(1);
+  });
+
+  it("never overwrites a cancellation that lands after the booking was read", async () => {
+    setup({ items: [bookingItem], bookings: [heldBooking()] });
+    beforeConditionalPatch = (row) => {
+      beforeConditionalPatch = undefined;
+      Object.assign(row, { status: "cancelled", cancel_reason: "student_cancelled" });
+    };
+
+    const result = await fulfillPaidOrder(ORDER);
+
+    expect(result.confirmed).toEqual([]);
+    expect(store.bookings.get("bk-1")).toMatchObject({ status: "cancelled", cancel_reason: "student_cancelled" });
+  });
+
+  it("still honours payment when the hold lapses after the booking was read", async () => {
+    setup({ items: [bookingItem], bookings: [heldBooking()] });
+    beforeConditionalPatch = (row) => {
+      beforeConditionalPatch = undefined;
+      Object.assign(row, { status: "cancelled", cancel_reason: "hold_expired" });
+    };
+
+    const result = await fulfillPaidOrder(ORDER);
+
+    expect(result.confirmed).toHaveLength(1);
   });
 
   it("expired hold with free slot is re-occupied and confirmed", async () => {
@@ -388,5 +436,40 @@ describe("square webhook", () => {
     const res = await post();
     expect(res.status).toBe(200);
     expect(fulfilMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("free session fulfilment through the shared paid-order path", () => {
+  it("confirms a held free session and replays without another booking or credit", async () => {
+    setup({ items: [{ id: "oi-1", lesson: 9, booking: "bk-1" }], bookings: [heldBooking({ lesson: 9 })] });
+    expect(await fulfillPaidOrder(ORDER)).toMatchObject({ confirmed: ["bk-1"], credits: [], attention: [] });
+    expect(store.bookings.get("bk-1")).toMatchObject({ status: "confirmed", hold_expires_at: null });
+    const writes = calls.filter((c) => c.method !== "GET").length;
+    expect(await fulfillPaidOrder(ORDER)).toEqual({ confirmed: [], credits: [], attention: [] });
+    expect(calls.filter((c) => c.method !== "GET")).toHaveLength(writes);
+    expect(store.bookings.size).toBe(1);
+    expect(store.credits).toHaveLength(0);
+  });
+
+  it("does not confirm an expired free hold when a new hold for the same type exists", async () => {
+    setup({ items: [{ id: "oi-1", lesson: 9, booking: "bk-1" }], bookings: [
+      heldBooking({ lesson: 9, hold_expires_at: "2020-01-01T00:00:00Z" }),
+      heldBooking({ id: "new-hold", lesson: 9 }),
+    ] });
+    expect((await fulfillPaidOrder(ORDER)).attention).toHaveLength(1);
+    expect(store.bookings.get("bk-1")!.status).toBe("cancelled");
+    expect(store.bookings.get("new-hold")!.status).toBe("held");
+    expect(store.order.needs_attention).toBe(true);
+    expect(store.credits).toHaveLength(0);
+  });
+
+  it("does not reoccupy a swept free hold if the same free type is booked elsewhere", async () => {
+    setup({ items: [{ id: "oi-1", lesson: 9, booking: "bk-1" }], bookings: [
+      heldBooking({ lesson: 9, status: "cancelled", cancel_reason: "hold_expired" }),
+      heldBooking({ id: "other-booking", lesson: 9, status: "confirmed", order_item: "other-line" }),
+    ] });
+    expect((await fulfillPaidOrder(ORDER)).attention).toHaveLength(1);
+    expect(store.bookings.size).toBe(2);
+    expect(store.credits).toHaveLength(0);
   });
 });

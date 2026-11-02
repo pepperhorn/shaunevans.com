@@ -10,6 +10,7 @@ import { addDaysIso, zonedParts, BOOKING_TZ } from "@/lib/booking/time";
 import type { AvailabilityView } from "@/lib/booking/slots";
 import type { Lesson } from "@/data/lessons";
 import WeekGrid, { GridLegend } from "./WeekGrid";
+import { linkedLesson } from "@/lib/booking/selection";
 import { PICK_LESSON_EVENT } from "./LessonCard";
 import { cellKey, spanKeys, toGridModel } from "./gridModel";
 import {
@@ -30,7 +31,7 @@ type Credit = { id: string; packName: string; lessonId: number; remaining: numbe
 type Mode = { type: "single"; slug: string } | { type: "credit"; creditId: string };
 type Status = { tone: "error" | "info"; text: string } | null;
 
-type Props = { lessons: Lesson[]; horizonWeeks: number };
+type Props = { lessons: Lesson[]; horizonWeeks: number; unlistedSlugs?: string[] };
 
 /** `/bookings?reschedule=<booking id>&lesson=<slug>` (from /account) moves an existing lesson. */
 type Reschedule = { bookingId: string; slug: string };
@@ -49,11 +50,12 @@ function readReschedule(singles: Lesson[]): Reschedule | null | undefined {
 }
 
 const RESCHEDULE_ERRORS: Record<string, string> = {
-  too_late: "It's too close to the lesson to move it online — please get in touch.",
-  not_confirmed: "That lesson has already been changed. Check your account for the latest.",
-  no_credits: "That credit has no lessons left to move onto this time.",
+  too_late: "It's too close to the session to move it online — please get in touch.",
+  not_confirmed: "That session has already been changed. Check your account for the latest.",
+  no_credits: "That credit has no sessions left to move onto this time.",
+  free_booking_limit: "You already have this free session type held or booked. Manage it in your account or release its hold first.",
   not_bookable:
-    "That time can't be booked. Times that overlap your current lesson can't be chosen — pick another time or get in touch.",
+    "That time can't be booked. Times that overlap your current session can't be chosen — pick another time or get in touch.",
 };
 
 const MOBILE_QUERY = "(max-width: 799.98px)"; // below the site's `sm` (800px)
@@ -80,7 +82,7 @@ async function postJson(url: string, body: unknown) {
   return { status: res.status, ok: res.ok, body: j };
 }
 
-export default function BookingPanel({ lessons, horizonWeeks }: Props) {
+export default function BookingPanel({ lessons, horizonWeeks, unlistedSlugs = [] }: Props) {
   const sess = useStore(sessionState);
   const authed = sess.status === "authenticated";
   const mobile = useIsMobile();
@@ -110,11 +112,17 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
   }
 
   // ── Lesson / credit selection ──────────────────────────────────────────
+  const [deepLink] = useState(() => linkedLesson(singles, window.location.search));
+  const selectableSingles = useMemo(() => singles.filter((l) => !unlistedSlugs.includes(l.slug) || l.slug === deepLink?.slug), [singles, unlistedSlugs, deepLink]);
+  useEffect(() => {
+    if (deepLink) document.getElementById("booking-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [deepLink]);
   const [rescheduleParam] = useState(() => readReschedule(singles));
   const reschedule = rescheduleParam ?? null;
   const [mode, setMode] = useState<Mode | null>(() => {
     if (reschedule) return { type: "single", slug: reschedule.slug };
-    return singles[0] ? { type: "single", slug: singles[0].slug } : null;
+    const initial = deepLink ?? selectableSingles[0];
+    return initial ? { type: "single", slug: initial.slug } : null;
   });
   const [credits, setCredits] = useState<Credit[]>([]);
 
@@ -144,18 +152,18 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
 
   useEffect(() => {
     // Credit vanished (used up, signed out) → fall back to the first single.
-    if (mode?.type === "credit" && !activeCredit && singles[0]) setMode({ type: "single", slug: singles[0].slug });
-  }, [mode, activeCredit, singles]);
+    if (mode?.type === "credit" && !activeCredit) setMode(selectableSingles[0] ? { type: "single", slug: selectableSingles[0].slug } : null);
+  }, [mode, activeCredit, selectableSingles]);
 
   useEffect(() => {
     const onPick = (e: Event) => {
       const slug = (e as CustomEvent<{ slug: string }>).detail?.slug;
       if (reschedule) return; // locked to the lesson being moved
-      if (singles.some((l) => l.slug === slug)) setMode({ type: "single", slug });
+      if (selectableSingles.some((l) => l.slug === slug)) setMode({ type: "single", slug });
     };
     window.addEventListener(PICK_LESSON_EVENT, onPick);
     return () => window.removeEventListener(PICK_LESSON_EVENT, onPick);
-  }, [singles, reschedule]);
+  }, [selectableSingles, reschedule]);
 
   // ── Visible days ───────────────────────────────────────────────────────
   const today = zonedParts(Date.now(), tz).date;
@@ -262,7 +270,7 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
   const [authOpen, setAuthOpen] = useState(false);
-  const [booked, setBooked] = useState<string | null>(null);
+  const [booked, setBooked] = useState<{ name: string; when: string } | null>(null);
 
   async function saveContactIfChanged(): Promise<boolean> {
     const was = savedContact.current;
@@ -308,7 +316,7 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
           refetch();
           return;
         }
-        setBooked(String(r.body.when_label ?? sel?.local ?? ""));
+        setBooked({ name: lesson.name, when: String(r.body.when_label ?? sel?.local ?? "") });
         setSelected(null);
         return;
       }
@@ -322,13 +330,18 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
           void loadCredits();
           return;
         }
+        if (r.status === 409 && r.body.error === "free_booking_limit") {
+          setStatus({ tone: "error", text: RESCHEDULE_ERRORS.free_booking_limit });
+          setSelected(null);
+          return;
+        }
         if (r.status === 409) return onTaken();
         if (!r.ok) {
           setStatus({ tone: "error", text: "That credit can't be used for this time. Please refresh and try again." });
           refetch();
           return;
         }
-        setBooked(String(r.body.when_label ?? sel?.local ?? ""));
+        setBooked({ name: lesson.name, when: String(r.body.when_label ?? sel?.local ?? "") });
         setSelected(null);
         refetch();
         void loadCredits();
@@ -336,6 +349,11 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
       }
       const r = await postJson("/api/bookings/hold", { lesson_slug: lesson.slug, start_at: startIso, visitor_tz: tz });
       if (r.status === 401) return setAuthOpen(true);
+      if (r.status === 409 && r.body.error === "free_booking_limit") {
+        setStatus({ tone: "error", text: "You already have this free session type held or booked. Complete checkout, release the hold, or manage your booking in your account." });
+        setSelected(null);
+        return;
+      }
       if (r.status === 409) return onTaken();
       if (r.status === 429 && r.body.error === "too_many_holds") {
         setStatus({ tone: "error", text: "You're holding too many times — check out or release one first." });
@@ -378,7 +396,7 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
   if (rescheduleParam === null) {
     return (
       <p className="booking-reschedule-unavailable rounded-[10px] bg-[rgb(244,242,238)] p-5 font-inconsolata text-sm text-red-600 dark:bg-neutral-900">
-        This lesson can't be moved online right now.{" "}
+        This session can't be moved online right now.{" "}
         <a className="booking-reschedule-contact underline underline-offset-2" href="/contact">
           Get in touch
         </a>{" "}
@@ -386,10 +404,10 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
       </p>
     );
   }
-  if (!singles.length) {
+  if (!booked && !lesson && !selectableSingles.length) {
     return (
       <p className="booking-panel-empty text-sm text-muted-foreground">
-        Online booking isn't open right now. <a className="underline" href="/contact">Get in touch</a> to arrange a lesson.
+        Online booking isn't open right now. <a className="underline" href="/contact">Get in touch</a> to arrange a session.
       </p>
     );
   }
@@ -405,13 +423,13 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
     return (
       <div className="booking-confirmed space-y-3 rounded-[10px] bg-[rgb(244,242,238)] p-5 font-inconsolata text-[#1f1d1e] dark:bg-neutral-900 dark:text-neutral-100">
         <h3 className="booking-confirmed-title font-overpass-mono text-lg tracking-tight">
-          {reschedule ? "Lesson moved" : "You're booked"}
+          {reschedule ? `${booked.name} moved` : `${booked.name} confirmed`}
         </h3>
-        <p className="booking-confirmed-when text-sm">{booked}</p>
+        <p className="booking-confirmed-when text-sm">{booked.when}</p>
         <p className="booking-confirmed-note text-sm text-[#6b6668] dark:text-neutral-400">
           {reschedule
-            ? "Your old time has been released. The lesson link is sent before your session."
-            : "A confirmation email is on its way. The lesson link is sent before your session."}
+            ? "Your old time has been released. The session link is sent before your session."
+            : "A confirmation email is on its way. The session link is sent before your session."}
         </p>
         <div className="booking-confirmed-actions flex flex-wrap gap-2">
           <Button asChild size="sm" className="btn-booking-account">
@@ -435,14 +453,14 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
 
       {reschedule ? (
         <p className="booking-reschedule-note text-xs text-[#6b6668] dark:text-neutral-400">
-          Moving your {lesson?.name ?? "lesson"}. Your current time stays booked until you choose a new one ·{" "}
+          Moving your {lesson?.name ?? "session"}. Your current time stays booked until you choose a new one ·{" "}
           <a href="/account" className="booking-reschedule-keep underline underline-offset-2">
             keep current time
           </a>
         </p>
       ) : (
-        <div className="booking-mode-list flex flex-wrap gap-2" role="radiogroup" aria-label="Lesson">
-          {singles.map((l) => {
+        <div className="booking-mode-list flex flex-wrap gap-2" role="radiogroup" aria-label="Session">
+          {selectableSingles.map((l) => {
             const on = mode?.type === "single" && mode.slug === l.slug;
             return (
               <button
@@ -641,7 +659,7 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
                   disabled={!phone.trim()}
                   onChange={(e) => setSmsOptIn(e.target.checked)}
                 />
-                Text me lesson reminders
+                Text me session reminders
               </label>
             </div>
           )}
@@ -651,7 +669,7 @@ export default function BookingPanel({ lessons, horizonWeeks }: Props) {
             disabled={busy || sess.status === "loading"}
             onClick={onAction}
           >
-            {busy ? "Working…" : reschedule ? "Move lesson here" : activeCredit ? "Book with credit" : "Add to cart"}
+            {busy ? "Working…" : reschedule ? "Move session here" : activeCredit ? "Book with credit" : "Add to cart"}
           </Button>
         </div>
       )}

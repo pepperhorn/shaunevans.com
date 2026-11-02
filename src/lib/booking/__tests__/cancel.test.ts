@@ -4,6 +4,10 @@ import { POST as cancel } from "@/pages/api/bookings/[id]/cancel";
 import { POST as reschedule } from "@/pages/api/bookings/[id]/reschedule";
 import { POST as creditBook } from "@/pages/api/bookings/credit";
 import { POST as hold } from "@/pages/api/bookings/hold";
+import { POST as checkout } from "@/pages/api/checkout";
+import { fulfillPaidOrder } from "@/lib/booking/fulfil";
+import { getPaymentProvider } from "@/lib/payments";
+vi.mock("@/lib/payments", () => ({ getPaymentProvider: vi.fn(() => { throw new Error("Square must not be instantiated for free checkout"); }) }));
 import { getActiveCredits } from "@/lib/booking/repo";
 import { getBookingsForUser, getLessonTimesByOrderItem } from "@/lib/bookings";
 import { sydneyWallToUtc } from "@/lib/booking/time";
@@ -15,7 +19,7 @@ const iso = (ms: number) => new Date(ms).toISOString();
 const USER = 7;
 
 type Row = Record<string, unknown>;
-type Collection = "bookings" | "lesson_credits" | "lessons" | "availability" | "orders";
+type Collection = "bookings" | "lesson_credits" | "lessons" | "availability" | "orders" | "order_items";
 
 const LESSONS: Row[] = [
   { id: 1, slug: "single-session", name: "Single Coaching Session", kind: "single", duration_minutes: 60, price: "90", requires_phone: false, status: "published" },
@@ -38,6 +42,7 @@ const TUESDAY_BLOCK: Row = {
 const RELATIONS: Record<string, Record<string, Collection>> = {
   bookings: { lesson: "lessons" },
   lesson_credits: { lesson: "lessons", pack: "lessons" },
+  order_items: { lesson: "lessons", booking: "bookings" },
 };
 
 let db: Record<Collection, Row[]>;
@@ -64,6 +69,9 @@ function matches(row: Row, filter: Row | undefined): boolean {
     if (key === "_and") return (cond as Row[]).every((f) => matches(row, f));
     if (key === "_or") return (cond as Row[]).some((f) => matches(row, f));
     const v = row[key];
+    if (key === "lesson" && Object.keys(cond as Row).some((k) => !k.startsWith("_"))) {
+      return matches(db.lessons.find((l) => l.id === v) ?? {}, cond as Row);
+    }
     return Object.entries(cond as Row).every(([op, x]) => {
       switch (op) {
         case "_eq":
@@ -121,10 +129,16 @@ function startDirectus() {
         const filter = JSON.parse(url.searchParams.get("filter") ?? "null") as Row | undefined;
         const limit = Number(url.searchParams.get("limit") ?? "-1");
         let found = rows.filter((r) => matches(r, filter ?? undefined));
+        if (url.searchParams.has("filter[order][_eq]")) found = found.filter((r) => r.order === url.searchParams.get("filter[order][_eq]"));
         if (limit > 0) found = found.slice(0, limit);
         return ok(found.map((r) => expand(coll, r, url.searchParams.get("fields"))));
       }
       if (method === "POST") {
+        if (Array.isArray(body)) {
+          const created = body.map((item) => ({ id: `${coll}-${++seq}`, ...item }));
+          rows.push(...created);
+          return ok(created);
+        }
         if (coll === "lesson_credits" && failCreditPosts > 0) {
           failCreditPosts--;
           return new Response(JSON.stringify({ errors: [{ message: "Service Unavailable" }] }), { status: 503 });
@@ -133,7 +147,7 @@ function startDirectus() {
           beforeBookingInsert?.();
           if (overlaps(body!.busy_start as string, body!.busy_end as string)) return masked500();
         }
-        const row = { id: `${coll}-${++seq}`, ...body };
+        const row = { id: `${coll}-${++seq}`, ...(coll === "orders" ? { payment_provider: null, payment_session_id: null, payment_intent_id: null } : {}), ...body };
         rows.push(row);
         return ok({ id: row.id });
       }
@@ -141,7 +155,7 @@ function startDirectus() {
         const row = rows.find((r) => r.id === id);
         if (!row) return new Response("{}", { status: 403 });
         Object.assign(row, body);
-        return ok({ id });
+        return ok(coll === "orders" ? row : { id });
       }
       if (method === "PATCH") {
         const q = body!.query as { filter?: Row };
@@ -180,7 +194,8 @@ function seed(bookings: Row[], credits: Row[] = []) {
   db = {
     bookings: bookings.map((b) => ({ ...b })),
     lesson_credits: credits.map((c) => ({ ...c })),
-    lessons: LESSONS,
+    lessons: LESSONS.map((l) => ({ ...l })),
+    order_items: [{ id: "oi-1", unit_price: "90.00" }],
     availability: [TUESDAY_BLOCK],
     orders: [{ id: "order-1", user: USER, status: "paid", needs_attention: false, notes: "Paid via Square." }],
   };
@@ -217,6 +232,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -477,5 +493,127 @@ describe("account views", () => {
     ]);
 
     expect(await getLessonTimesByOrderItem(USER)).toEqual({ "oi-1": "NEW", "oi-2": "LAPSED (cancelled)" });
+  });
+});
+
+const freeLesson = { id: 9, slug: "bws-consultation", name: "Build with Shaun consultation", kind: "single", duration_minutes: 30, price: "0", requires_phone: false, status: "published" };
+const holdFree = () => hold(ctx({ body: { lesson_slug: "bws-consultation", start_at: iso(at("18:00")), visitor_tz: "Australia/Sydney" } }));
+
+describe("free session policy", () => {
+  beforeEach(() => {
+    vi.setSystemTime(at("19:00") - 48 * H);
+    seed([]);
+    db.lessons.push({ ...freeLesson });
+    vi.stubEnv("PUBLIC_SITE_URL", "https://site.test");
+    vi.mocked(getPaymentProvider).mockClear();
+  });
+
+  it("checks out a real held free session through orders and shared fulfilment, idempotently", async () => {
+    const held = await read(await holdFree());
+    const bookingId = String(held.body!.booking_id);
+    const cart = { items: [{ kind: "lesson_booking", booking_id: bookingId }] };
+    const first = await read(await checkout(ctx({ body: cart })));
+    expect(first).toMatchObject({ status: 200, body: { ok: true } });
+    const orderId = first.body!.order_id as string;
+    expect(first.body!.redirect_url).toBe(`https://site.test/shop/orders/${orderId}/confirmation`);
+    expect(bookingRow(bookingId)).toMatchObject({ status: "confirmed", hold_expires_at: null, order: orderId });
+    const created = db.orders.find((o) => o.id === orderId)!;
+    expect(created).toMatchObject({ status: "paid", total: "0.00", tax: "0.00", payment_provider: null, payment_session_id: null, payment_intent_id: null });
+    const orderCount = db.orders.length;
+    const lineCount = db.order_items.length;
+    expect(await read(await checkout(ctx({ body: cart })))).toMatchObject({ status: 200, body: { order_id: orderId } });
+    expect(await fulfillPaidOrder(orderId)).toEqual({ confirmed: [], credits: [], attention: [] });
+    expect(db.orders).toHaveLength(orderCount);
+    expect(db.order_items).toHaveLength(lineCount);
+    expect(db.lesson_credits).toHaveLength(0);
+    expect(getPaymentProvider).not.toHaveBeenCalled();
+    expect(await read(await cancel(ctx({ id: bookingId })))).toMatchObject({ status: 200, body: { credit_id: null } });
+    expect(db.lesson_credits).toHaveLength(0);
+  });
+
+  it("holds an unlisted published free lesson normally", async () => {
+    expect((await holdFree()).status).toBe(201);
+    expect(db.bookings).toHaveLength(1);
+    expect(db.bookings[0]).toMatchObject({ lesson: 9, status: "held" });
+  });
+
+  it.each(["held", "confirmed"])("rejects another booking of the same free type when an existing %s one is live", async (status) => {
+    db.lessons.push({ ...freeLesson, id: 10, slug: "other-free" });
+    db.bookings.push(booking({ lesson: 9, status, hold_expires_at: iso(Date.now() + H) }));
+    expect(await read(await holdFree())).toMatchObject({ status: 409, body: { error: "free_booking_limit" } });
+    expect(db.bookings).toHaveLength(1);
+  });
+
+  it.each([
+    { status: "held", hold_expires_at: "2020-01-01T00:00:00Z" },
+    { status: "confirmed", start_at: "2020-01-01T00:00:00Z" },
+    { status: "cancelled" }, { status: "completed" }, { status: "no_show" },
+  ])("ignores inactive free bookings: %j", async (over) => {
+    db.bookings.push(booking({ lesson: 9, ...over }));
+    expect((await holdFree()).status).toBe(201);
+  });
+
+  it("allows an intro and consultation at the same time, with separate per-type limits", async () => {
+    db.lessons.push({ ...freeLesson, id: 10, slug: "intro-15", name: "Free 15-minute intro", duration_minutes: 15 });
+    db.bookings.push(booking({ lesson: 10, status: "held", hold_expires_at: iso(Date.now() + H) }));
+    expect((await holdFree()).status).toBe(201);
+    expect(db.bookings.filter((b) => b.status === "held")).toHaveLength(2);
+  });
+
+  it("holds a 15-minute intro on the existing half-hour start grid with only 15 minutes occupied", async () => {
+    db.lessons.push({ ...freeLesson, id: 10, slug: "intro-15", name: "Free 15-minute intro", duration_minutes: 15 });
+    const result = await hold(ctx({ body: { lesson_slug: "intro-15", start_at: iso(at("18:30")), visitor_tz: "Australia/Sydney" } }));
+    expect(result.status).toBe(201);
+    expect(db.bookings[0]).toMatchObject({ start_at: iso(at("18:30")), end_at: iso(at("18:45")), busy_start: iso(at("18:30")), busy_end: iso(at("18:45")) });
+  });
+
+  it("rejects a 15-minute intro starting off the existing half-hour grid", async () => {
+    db.lessons.push({ ...freeLesson, id: 10, slug: "intro-15", duration_minutes: 15 });
+    const result = await hold(ctx({ body: { lesson_slug: "intro-15", start_at: iso(at("18:15")), visitor_tz: "Australia/Sydney" } }));
+    expect(result.status).toBe(422);
+    expect(db.bookings).toHaveLength(0);
+  });
+
+  it("paid bookings do not consume the free allowance", async () => {
+    db.bookings.push(booking());
+    expect((await holdFree()).status).toBe(201);
+  });
+
+  it("backs out when a competing free hold lands after the initial check", async () => {
+    beforeBookingInsert = () => {
+      beforeBookingInsert = null;
+      db.bookings.push(booking({ id: "race", lesson: 9, status: "held", hold_expires_at: iso(Date.now() + H) }));
+    };
+    expect(await read(await holdFree())).toMatchObject({ status: 409, body: { error: "free_booking_limit" } });
+    expect(db.bookings.filter((b) => b.status === "held")).toHaveLength(1);
+    expect(db.bookings.find((b) => b.id !== "race")).toMatchObject({ status: "cancelled", cancel_reason: "free_booking_limit" });
+  });
+
+  it("reschedules a free session without consuming a second allowance", async () => {
+    db.bookings.push(booking({ lesson: 9 }));
+    const res = await reschedule(ctx({ id: "bk-1", body: { start_at: iso(at("18:00")), visitor_tz: "Australia/Sydney" } }));
+    expect(res.status).toBe(201);
+    expect(bookingRow("bk-1").status).toBe("cancelled");
+    expect(db.bookings.filter((b) => b.status === "confirmed")).toHaveLength(1);
+  });
+
+  it("never grants a refund credit for a free line in a paid mixed order, even after repricing", async () => {
+    db.bookings.push(booking({ lesson: 9 }));
+    db.order_items[0].unit_price = "0.00";
+    db.lessons.find((l) => l.id === 9)!.price = "100";
+    expect(await read(await cancel(ctx({ id: "bk-1" })))).toMatchObject({ status: 200, body: { ok: true, credit_id: null } });
+    expect(db.lesson_credits).toHaveLength(0);
+  });
+
+  it("preserves the refund credit for a paid purchase after the lesson becomes free", async () => {
+    db.bookings.push(booking({ lesson: 9 }));
+    expect((await cancel(ctx({ id: "bk-1" }))).status).toBe(200);
+    expect(db.lesson_credits).toHaveLength(1);
+  });
+
+  it("rejects an unpublished consultation", async () => {
+    db.lessons.find((l) => l.id === 9)!.status = "draft";
+    expect((await holdFree()).status).toBe(422);
+    expect(db.bookings).toHaveLength(0);
   });
 });

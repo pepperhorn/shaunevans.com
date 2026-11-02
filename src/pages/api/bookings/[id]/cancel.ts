@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import {
   cancelConfirmedBooking,
+  bookingHasRefundValue,
   createRefundCredit,
   flagOrderAttention,
   getBooking,
@@ -61,12 +62,14 @@ export const POST: APIRoute = async ({ params, session }) => {
       return json({ error: "too_late" }, 409);
     }
 
+    const refundEligible = await bookingHasRefundValue(booking);
+
     // Compare-and-set: a parallel cancel/reschedule that got there first wins, we create nothing.
     if (!(await cancelConfirmedBooking(booking.id, "student_cancelled"))) {
       return json({ error: "not_confirmed" }, 409);
     }
 
-    if (booking.source !== "purchase" || booking.lessonId == null) return json({ ok: true, credit_id: null });
+    if (!refundEligible || booking.lessonId == null) return json({ ok: true, credit_id: null });
 
     // The cancel has committed, so a failed credit must not fail the request (a retry would get
     // not_confirmed and the student would lose the lesson). Retry once, then hand it to Shaun.

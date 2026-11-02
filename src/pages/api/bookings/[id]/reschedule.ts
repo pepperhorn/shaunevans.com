@@ -64,6 +64,7 @@ export const POST: APIRoute = async ({ params, request, session }) => {
     const result = await createBooking({
       userId: user.id,
       lessonId: lesson.id,
+      freeBooking: lesson.price === 0 ? { replacesBookingId: booking.id } : undefined,
       startAt,
       durationMins: lesson.durationMinutes,
       status: "confirmed",
@@ -77,6 +78,7 @@ export const POST: APIRoute = async ({ params, request, session }) => {
       settings,
     });
     if (!result.ok) {
+      if (result.reason === "free_booking_limit") return json({ error: "free_booking_limit", message: "You already have this free session type held or booked." }, 409);
       return result.reason === "conflict"
         ? json({ error: "slot_taken" }, 409)
         : json({ error: "not_bookable" }, 422);
