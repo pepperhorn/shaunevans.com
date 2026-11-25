@@ -92,6 +92,15 @@ const isHomePage = Astro.url.pathname === '/' || Astro.url.pathname === '/index.
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
 
+    {import.meta.env.PROD && (
+      <script
+        is:inline
+        defer
+        src="https://analytics.pepperhorn.com/script.js"
+        data-website-id="8d5b1dc0-d59f-4194-8574-1862208e80ad"
+      ></script>
+    )}
+
     <!-- Fonts -->
     <Font cssVariable="--font-inconsolata" preload />
     <Font cssVariable="--font-overpass-mono" preload />
